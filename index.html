@@ -503,7 +503,7 @@
   <div class="layer-section">
     <div class="layer-section-header">Conditions</div>
     <button class="layer-btn on" data-layer="radar" onclick="toggleLayer('radar')"><span class="dot"></span><span class="name">Radar</span></button>
-    <button class="layer-btn" data-layer="satellite" onclick="toggleLayer('satellite')"><span class="dot"></span><span class="name">Satellite (IR)</span></button>
+    <button class="layer-btn" data-layer="satellite" onclick="toggleLayer('satellite')"><span class="dot"></span><span class="name">Satellite</span></button>
     <button class="layer-btn" data-layer="metar" onclick="toggleLayer('metar')"><span class="dot"></span><span class="name">Surface Obs</span></button>
   </div>
   <div class="layer-section">
@@ -852,21 +852,13 @@ function togglePlayback() {
 }
 
 // ===========================================================================
-// GOES SATELLITE (NASA GIBS WMTS — Band 13 Clean Infrared, 10-min cadence)
+// GOES SATELLITE (NASA GIBS WMTS — GeoColor day/night composite)
+// Using the "no-time slot" URL pattern which always serves the latest available
+// frame. GeoColor blends visible (day) + IR (night) so it works 24/7 + is gorgeous.
 // ===========================================================================
-function getGibsTime() {
-  // Lag 20 min and round to nearest 10-min boundary to ensure tiles exist
-  const t = new Date(Date.now() - 20 * 60 * 1000);
-  t.setUTCMinutes(Math.floor(t.getUTCMinutes() / 10) * 10);
-  t.setUTCSeconds(0);
-  t.setUTCMilliseconds(0);
-  return t.toISOString().split('.')[0] + 'Z';
-}
-
 function renderSatelliteFrame() {
-  const time = getGibsTime();
-  const layerId = 'GOES-East_ABI_Band13_Clean_Infrared';
-  const tileUrl = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${layerId}/default/${time}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`;
+  const layerId = 'GOES-East_ABI_GeoColor';
+  const tileUrl = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${layerId}/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`;
   if (STATE.map.getLayer('sat-layer')) STATE.map.removeLayer('sat-layer');
   if (STATE.map.getSource('sat-source')) STATE.map.removeSource('sat-source');
   STATE.map.addSource('sat-source', {
@@ -1641,7 +1633,9 @@ initMap();
 // Auto-refresh schedule
 setInterval(loadRadarFrames, 5 * 60 * 1000);
 setInterval(loadAlertsForMapView, 2 * 60 * 1000);
-setInterval(() => { if (STATE.prefs.layer_satellite) renderSatelliteFrame(); }, 10 * 60 * 1000);
+// GIBS satellite tiles are served at their latest available time when the URL
+// has no time slot — so we don't need to refresh the layer; the browser will
+// re-fetch when tiles expire from cache.
 setInterval(() => { if (STATE.prefs.layer_outlook) loadOutlook(); }, 15 * 60 * 1000);
 setInterval(() => { ['tornado', 'hail', 'wind'].forEach(t => { if (STATE.prefs[`layer_prob_${t}`]) loadProb(t); }); }, 15 * 60 * 1000);
 setInterval(() => { if (STATE.prefs.layer_mcd) loadMCD(); }, 5 * 60 * 1000);
