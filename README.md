@@ -2,7 +2,7 @@
 
 A free, professional-grade weather radar + forecast app. Built on free public data — no API keys, no paywalls, no ads. Personal use.
 
-**Live:** https://stormwatch.pages.dev
+**Live:** https://stormwatch-kp8.pages.dev
 
 ## What it does
 

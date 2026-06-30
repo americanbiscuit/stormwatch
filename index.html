@@ -947,12 +947,6 @@ function renderForecastPanel(data) {
     </div>`;
   }
 
-  // ACTIVE ALERTS FOR THIS POINT
-  const pointAlerts = STATE.alerts.filter(a => {
-    // Simple inclusion: if the point alert API returned ones for this lat/lon, they'd be in STATE.alerts only after reloading.
-    // For now show all current alerts within the side panel under their own section.
-    return true;
-  });
   if (STATE.alerts.length) {
     html += `<div class="panel-section">
       <h3><span class="accent-bar" style="background:var(--severe);"></span>Active Alerts (${STATE.alerts.length})</h3>
