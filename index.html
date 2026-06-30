@@ -779,10 +779,12 @@
   </div>
   <div class="legend-group">
     <h4>Wind Flow (animated)</h4>
-    <div class="legend-row"><span style="color:rgba(180,220,255,0.9);font-weight:800;">∼</span><span class="name">Normal wind</span><span class="desc">&lt; 25mph</span></div>
-    <div class="legend-row"><span style="color:#fbbf24;font-weight:800;">∼</span><span class="name">Strong</span><span class="desc">25-40mph</span></div>
-    <div class="legend-row"><span style="color:#f43f5e;font-weight:800;">∼</span><span class="name">Gale</span><span class="desc">40mph+</span></div>
-    <div class="legend-row"><span style="color:var(--muted);font-size:10px;">Particles flow in the direction wind is blowing</span></div>
+    <div class="legend-row"><span style="color:rgba(200,220,240,1);font-weight:800;">∼</span><span class="name">Calm</span><span class="desc">&lt; 8 mph</span></div>
+    <div class="legend-row"><span style="color:#96c8ff;font-weight:800;">∼</span><span class="name">Breezy</span><span class="desc">8-18 mph</span></div>
+    <div class="legend-row"><span style="color:#78fac8;font-weight:800;">∼</span><span class="name">Windy</span><span class="desc">18-28 mph</span></div>
+    <div class="legend-row"><span style="color:#fbbf24;font-weight:800;">∼</span><span class="name">Strong</span><span class="desc">28-40 mph</span></div>
+    <div class="legend-row"><span style="color:#f43f5e;font-weight:800;">∼</span><span class="name">Gale</span><span class="desc">40 mph+</span></div>
+    <div class="legend-row"><span style="color:var(--muted);font-size:10px;">Data: Open-Meteo HRRR (US) / ECMWF (global) — same source Apple Weather uses</span></div>
   </div>
   <div class="legend-group">
     <h4>Surface Obs &amp; Wind</h4>
@@ -1669,10 +1671,11 @@ function renderMetarOverlay(fc) {
 // Particles are advected by bilinearly-interpolated U/V wind components and
 // drawn with fading trails; old/out-of-bounds particles respawn randomly.
 // ===========================================================================
-const WIND_GRID = 12;          // 12x12 = 144 sample points across viewport
-const WIND_PARTICLE_COUNT = 450;
+const WIND_GRID = 16;          // 16x16 = 256 sample points across viewport (~50km grid for a CONUS view)
+const WIND_PARTICLE_COUNT = 600;
 const WIND_MAX_AGE = 80;       // frames before respawn
-const WIND_SPEED_SCALE = 0.35; // pixels per frame per mph — slower = more graceful
+const WIND_SPEED_SCALE = 0.4;  // pixels per frame per mph
+const WIND_FADE_RATE = 0.04;   // alpha removed per frame (higher = shorter trails)
 
 function setupWindCanvas() {
   let canvas = document.getElementById('windCanvas');
@@ -1766,10 +1769,12 @@ function spawnParticle() {
 }
 
 function windColor(speed) {
-  // Subtle — a soft white-blue most of the time, only the truly extreme wind goes warm
-  if (speed < 25) return 'rgba(180, 220, 255, 0.35)';
-  if (speed < 40) return 'rgba(251, 191, 36, 0.5)';
-  return 'rgba(244, 63, 94, 0.65)';
+  // Brighter than before so particles are visible against any base map
+  if (speed < 8)  return 'rgba(200, 220, 240, 0.75)';
+  if (speed < 18) return 'rgba(150, 200, 255, 0.85)';
+  if (speed < 28) return 'rgba(120, 250, 200, 0.9)';
+  if (speed < 40) return 'rgba(251, 191, 36, 0.95)';
+  return 'rgba(244, 80, 100, 1.0)';
 }
 
 function animateWindFlow() {
@@ -1778,21 +1783,27 @@ function animateWindFlow() {
   if (!c) return;
   const ctx = c.getContext('2d');
   const w = parseFloat(c.style.width), h = parseFloat(c.style.height);
-  // Stronger fade = shorter, calmer trails (less visual noise)
-  ctx.fillStyle = 'rgba(13, 17, 23, 0.18)';
+  // KEY: 'destination-out' SUBTRACTS alpha from existing pixels instead of painting
+  // dark over the map. This is the canonical trick for transparent canvas trails —
+  // without it, the rgba fills accumulate and blot out everything underneath.
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = `rgba(0, 0, 0, ${WIND_FADE_RATE})`;
   ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+  ctx.lineCap = 'round';
 
   for (const p of STATE.windParticles) {
     const ll = STATE.map.unproject([p.x, p.y]);
     const wind = sampleWind(ll.lat, ll.lng);
-    if (!wind || p.age > WIND_MAX_AGE || p.x < 0 || p.x > w || p.y < 0 || p.y > h) {
+    if (!wind || wind.speed < 0.1 || p.age > WIND_MAX_AGE || p.x < -10 || p.x > w + 10 || p.y < -10 || p.y > h + 10) {
       Object.assign(p, spawnParticle(), { age: 0 });
       continue;
     }
     const newX = p.x + wind.u * WIND_SPEED_SCALE;
-    const newY = p.y - wind.v * WIND_SPEED_SCALE;  // screen Y inverted vs geographic
+    const newY = p.y - wind.v * WIND_SPEED_SCALE;
     ctx.strokeStyle = windColor(wind.speed);
-    ctx.lineWidth = 0.9;
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
     ctx.lineTo(newX, newY);
