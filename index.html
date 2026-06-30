@@ -455,6 +455,8 @@
 
   /* Stack outlook chip BELOW alert banner when both visible */
   .alert-banner.show ~ .outlook-chip.show { top: calc(116px + var(--safe-top)); }
+  /* Push the layers panel down so the warning banner doesn't cover it */
+  .alert-banner.show ~ .layers { top: calc(116px + var(--safe-top)); }
 
   /* When the side panel is open, push the alert banner left so it doesn't overlap.
      On phones (panel = full width), hide the banner entirely while the panel is open. */
@@ -647,7 +649,7 @@
     <div class="time-label">Radar</div>
     <div class="time-value" id="timeValue">Loading...</div>
   </div>
-  <span class="frame-type past" id="frameType">PAST</span>
+  <span class="frame-type past" id="frameType">NOW</span>
   <input type="range" class="time-slider" id="timeSlider" min="0" max="0" value="0" oninput="seekFrame(this.value)" />
 </div>
 
@@ -748,7 +750,7 @@
 </div>
 
 <div class="attrib">
-  <a href="https://www.rainviewer.com" target="_blank">RainViewer</a> ·
+  Radar <a href="https://mesonet.agron.iastate.edu" target="_blank">IEM</a>/NEXRAD ·
   <a href="https://www.weather.gov" target="_blank">NWS</a> ·
   <a href="https://www.spc.noaa.gov" target="_blank">SPC</a> ·
   <a href="https://www.nhc.noaa.gov" target="_blank">NHC</a> ·
@@ -796,8 +798,10 @@ const STATE = {
   currentMetarState: null,
 };
 
-const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json';
-const RAINVIEWER_MAX_ZOOM = 7;
+// Radar source: Iowa Environmental Mesonet CONUS NEXRAD composite (N0Q).
+// 5-minute resolution, 16 hours of history. No free tier zoom cap like RainViewer.
+const IEM_RADAR_HOURS = 16;
+const IEM_TILE_BASE = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q';
 const MAP_STYLES = {
   light: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
   dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
@@ -910,34 +914,45 @@ function findFirstLabelLayer() {
 }
 
 // ===========================================================================
-// RADAR (RainViewer)
+// RADAR (Iowa Environmental Mesonet CONUS NEXRAD composite)
+// 5-min resolution, 16hr history. Builds a fixed frame list locally — no
+// network fetch needed to know what frames exist.
 // ===========================================================================
-async function loadRadarFrames() {
-  try {
-    const res = await fetch(RAINVIEWER_API);
-    const data = await res.json();
-    const past = data.radar?.past || [];
-    const nowcast = data.radar?.nowcast || [];
-    const host = data.host;
-    STATE.radarFrames = [
-      ...past.map(f => ({ ...f, type: 'past', host })),
-      ...nowcast.map(f => ({ ...f, type: 'future', host })),
-    ];
-    STATE.currentFrameIdx = Math.max(0, past.length - 1);
-    const slider = document.getElementById('timeSlider');
-    slider.max = STATE.radarFrames.length - 1;
-    slider.value = STATE.currentFrameIdx;
-    renderRadarFrame();
-  } catch (e) {
-    console.error('Radar load failed', e);
-    document.getElementById('timeValue').textContent = 'Radar unavailable';
+function buildIEMRadarFrames(hours = IEM_RADAR_HOURS) {
+  const frames = [];
+  const now = new Date();
+  // Round latest frame down to a 5-min boundary, with a 5-min lag so IEM has had time to ingest
+  const latest = new Date(now.getTime());
+  latest.setUTCMinutes(Math.floor(latest.getUTCMinutes() / 5) * 5 - 5);
+  latest.setUTCSeconds(0);
+  latest.setUTCMilliseconds(0);
+  const interval = 5 * 60 * 1000;
+  const count = hours * 12;  // 12 frames per hour at 5-min resolution
+  for (let i = count - 1; i >= 0; i--) {
+    const t = new Date(latest.getTime() - i * interval);
+    const ts = t.getUTCFullYear()
+      + String(t.getUTCMonth() + 1).padStart(2, '0')
+      + String(t.getUTCDate()).padStart(2, '0')
+      + String(t.getUTCHours()).padStart(2, '0')
+      + String(t.getUTCMinutes()).padStart(2, '0');
+    frames.push({ time: Math.floor(t.getTime() / 1000), timestamp: ts, type: 'past' });
   }
+  return frames;
+}
+
+async function loadRadarFrames() {
+  STATE.radarFrames = buildIEMRadarFrames(IEM_RADAR_HOURS);
+  STATE.currentFrameIdx = STATE.radarFrames.length - 1;  // default to latest
+  const slider = document.getElementById('timeSlider');
+  slider.max = STATE.radarFrames.length - 1;
+  slider.value = STATE.currentFrameIdx;
+  renderRadarFrame();
 }
 
 function renderRadarFrame() {
   const frame = STATE.radarFrames[STATE.currentFrameIdx];
   if (!frame) return;
-  const tileUrl = `${frame.host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+  const tileUrl = `${IEM_TILE_BASE}-${frame.timestamp}/{z}/{x}/{y}.png`;
   if (STATE.map.getLayer('radar-layer')) STATE.map.removeLayer('radar-layer');
   if (STATE.map.getSource('radar-source')) STATE.map.removeSource('radar-source');
   STATE.map.addSource('radar-source', {
@@ -945,7 +960,7 @@ function renderRadarFrame() {
     tiles: [tileUrl],
     tileSize: 256,
     minzoom: 0,
-    maxzoom: RAINVIEWER_MAX_ZOOM,
+    maxzoom: 10,
   });
   STATE.map.addLayer({
     id: 'radar-layer',
@@ -958,13 +973,17 @@ function renderRadarFrame() {
   const d = new Date(frame.time * 1000);
   const isToday = d.toDateString() === new Date().toDateString();
   const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  const dateStr = isToday ? 'Today' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const dateStr = isToday ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   const ago = Math.round((Date.now() / 1000 - frame.time) / 60);
-  const agoStr = ago > 0 ? `${ago} min ago` : `in ${-ago} min`;
+  let agoStr;
+  if (ago < 0) agoStr = `in ${-ago} min`;
+  else if (ago < 60) agoStr = `${ago} min ago`;
+  else if (ago < 120) agoStr = `1 hr ${ago - 60} min ago`;
+  else agoStr = `${Math.floor(ago / 60)} hr ago`;
   document.getElementById('timeValue').textContent = `${dateStr} ${timeStr} · ${agoStr}`;
   const ft = document.getElementById('frameType');
-  ft.textContent = frame.type === 'past' ? 'PAST' : 'FORECAST';
-  ft.className = `frame-type ${frame.type}`;
+  ft.textContent = ago < 6 ? 'NOW' : 'PAST';
+  ft.className = `frame-type ${ago < 6 ? 'past' : 'past'}`;
   document.getElementById('timeSlider').value = STATE.currentFrameIdx;
 }
 function seekFrame(idx) { STATE.currentFrameIdx = parseInt(idx); renderRadarFrame(); }
@@ -972,12 +991,13 @@ function togglePlayback() {
   STATE.playing = !STATE.playing;
   document.getElementById('playBtn').textContent = STATE.playing ? '❚❚' : '▶';
   if (STATE.playing) {
+    // Faster playback (250ms/frame) since we have 192 frames covering 16 hours
     STATE.playInterval = setInterval(() => {
       let next = STATE.currentFrameIdx + 1;
       if (next >= STATE.radarFrames.length) next = 0;
       STATE.currentFrameIdx = next;
       renderRadarFrame();
-    }, 600);
+    }, 250);
   } else {
     clearInterval(STATE.playInterval);
   }
@@ -1841,8 +1861,19 @@ const _origToggle = toggleLayer;
 toggleLayer = async function(...args) { await _origToggle(...args); updateLayerCount(); };
 updateLayerCount();
 
-// Auto-refresh schedule
-setInterval(loadRadarFrames, 5 * 60 * 1000);
+// Auto-refresh schedule. Radar frame list rebuilds every 5 min to add the
+// newest 5-min slot at the latest position; if user is on the latest frame
+// we advance them to the new latest, otherwise we leave their position alone.
+setInterval(() => {
+  const wasOnLatest = STATE.currentFrameIdx === STATE.radarFrames.length - 1;
+  loadRadarFrames();
+  if (!wasOnLatest) {
+    // Keep user near where they were viewing
+    STATE.currentFrameIdx = Math.min(STATE.currentFrameIdx, STATE.radarFrames.length - 1);
+    document.getElementById('timeSlider').value = STATE.currentFrameIdx;
+    renderRadarFrame();
+  }
+}, 5 * 60 * 1000);
 setInterval(loadAlertsForMapView, 2 * 60 * 1000);
 // GIBS satellite tiles are served at their latest available time when the URL
 // has no time slot — so we don't need to refresh the layer; the browser will
