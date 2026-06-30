@@ -453,13 +453,118 @@
   .maplibregl-popup-tip { border-top-color: var(--surface) !important; border-bottom-color: var(--surface) !important; }
   .maplibregl-popup-close-button { color: var(--text-2) !important; font-size: 18px !important; padding: 2px 6px !important; }
 
+  /* Stack outlook chip BELOW alert banner when both visible */
+  .alert-banner.show ~ .outlook-chip.show { top: calc(116px + var(--safe-top)); }
+
+  /* When the side panel is open, push the alert banner left so it doesn't overlap.
+     On phones (panel = full width), hide the banner entirely while the panel is open. */
+  body.panel-open .alert-banner { right: calc(460px + 24px); }
+  @media (max-width: 700px) {
+    body.panel-open .alert-banner,
+    body.panel-open .outlook-chip,
+    body.panel-open .topbar { display: none; }
+  }
+
+  /* ===========================================================
+     Mobile bottom nav (visible on phones only) — clears time control
+  =========================================================== */
+  .bottom-nav { display: none; }
+  @media (max-width: 700px) {
+    .bottom-nav {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: rgba(13, 17, 23, 0.96);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-top: 1px solid var(--border);
+      z-index: 60;
+      padding: 4px 4px calc(4px + var(--safe-bottom));
+      display: flex;
+      justify-content: space-around;
+    }
+    .bn-item {
+      flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 8px 4px;
+      color: var(--text-2);
+      text-decoration: none;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      border-radius: 8px;
+      min-height: 48px;
+    }
+    .bn-item .icon { font-size: 19px; margin-bottom: 2px; line-height: 1; }
+    .bn-item.active { color: var(--accent); }
+    /* On mobile, time control needs room above the bottom nav */
+    .time-control { bottom: calc(72px + var(--safe-bottom)); }
+    .legend-toggle { bottom: calc(138px + var(--safe-bottom)); }
+    .legend { bottom: calc(174px + var(--safe-bottom)); }
+    /* Layer panel default-collapsed on mobile */
+    .layers.collapsed {
+      max-height: 44px;
+      width: auto;
+      overflow: hidden;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .layers.collapsed .layer-section,
+    .layers.collapsed .day-picker { display: none; }
+    .layers.collapsed .layers-collapsed-chip { display: flex; }
+    .layers-collapsed-chip { display: none; align-items: center; gap: 6px; color: var(--text); font-size: 13px; font-weight: 800; }
+    .layers-collapsed-chip .count { color: var(--accent); }
+    .layers-expand-arrow { color: var(--text-2); font-size: 12px; margin-left: 4px; }
+  }
+
+  /* First-run welcome modal */
+  .welcome-modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 40;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .welcome-modal.show { display: flex; }
+  .welcome-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 24px;
+    max-width: 380px;
+    width: 100%;
+    text-align: center;
+  }
+  .welcome-card .icon { font-size: 44px; margin-bottom: 8px; }
+  .welcome-card h2 { margin: 0 0 6px; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .welcome-card p { margin: 0 0 18px; color: var(--text-2); font-size: 14px; line-height: 1.5; }
+  .welcome-card .actions { display: flex; flex-direction: column; gap: 8px; }
+  .welcome-card .actions button {
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    padding: 14px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    font-family: inherit;
+    min-height: 44px;
+  }
+  .welcome-card .actions button.secondary {
+    background: transparent;
+    color: var(--text-2);
+    border: 1px solid var(--border);
+  }
+  .welcome-card .actions button.secondary:hover { color: var(--text); border-color: var(--text-2); }
+
   @media (max-width: 640px) {
     .logo-chip { padding: 6px 9px; font-size: 12px; }
     .logo-chip .bolt { font-size: 13px; }
-    .topbar .nav-chip a { padding: 4px 8px; font-size: 11px; }
-    .layers { top: calc(112px + var(--safe-top)); width: 180px; padding: 6px; }
-    .layer-btn { padding: 5px 8px; font-size: 11px; }
-    .outlook-chip { top: calc(112px + var(--safe-top)); left: 12px; right: auto; }
+    .topbar .nav-chip { display: none; }  /* hidden on mobile (bottom nav replaces it) */
+    .outlook-chip { top: calc(64px + var(--safe-top)); left: 12px; right: auto; }
     .time-control { padding: 8px 12px; gap: 8px; }
     .time-value { font-size: 12px; }
   }
@@ -498,36 +603,41 @@
   <span class="level" id="outlookLevel">—</span>
 </div>
 
-<!-- Layer panel grouped by category -->
-<div class="layers" id="layers">
-  <div class="layer-section">
-    <div class="layer-section-header">Conditions</div>
-    <button class="layer-btn on" data-layer="radar" onclick="toggleLayer('radar')"><span class="dot"></span><span class="name">Radar</span></button>
-    <button class="layer-btn" data-layer="satellite" onclick="toggleLayer('satellite')"><span class="dot"></span><span class="name">Satellite</span></button>
-    <button class="layer-btn" data-layer="metar" onclick="toggleLayer('metar')"><span class="dot"></span><span class="name">Surface Obs</span></button>
+<!-- Layer panel grouped by category. On mobile defaults to collapsed pill;
+     tap to expand the full panel. -->
+<div class="layers" id="layers" onclick="onLayerPanelClick(event)">
+  <div class="layers-collapsed-chip">
+    🗺 <span>Layers (<span class="count" id="layerCount">2</span>)</span>
+    <span class="layers-expand-arrow">▾</span>
   </div>
   <div class="layer-section">
-    <div class="layer-section-header">Severe Weather</div>
-    <button class="layer-btn on" data-layer="alerts" onclick="toggleLayer('alerts')"><span class="dot"></span><span class="name">NWS Alerts</span></button>
-    <button class="layer-btn" data-layer="outlook" onclick="toggleLayer('outlook')"><span class="dot"></span><span class="name">SPC Outlook</span></button>
+    <div class="layer-section-header">What's happening now</div>
+    <button class="layer-btn on" data-layer="radar" onclick="toggleLayer('radar')"><span class="dot"></span><span class="name">Radar (rain &amp; storms)</span></button>
+    <button class="layer-btn" data-layer="satellite" onclick="toggleLayer('satellite')"><span class="dot"></span><span class="name">Satellite (clouds)</span></button>
+    <button class="layer-btn" data-layer="metar" onclick="toggleLayer('metar')"><span class="dot"></span><span class="name">Airport temps</span></button>
+  </div>
+  <div class="layer-section">
+    <div class="layer-section-header">Severe threats</div>
+    <button class="layer-btn on" data-layer="alerts" onclick="toggleLayer('alerts')"><span class="dot"></span><span class="name">Warnings &amp; watches</span></button>
+    <button class="layer-btn" data-layer="outlook" onclick="toggleLayer('outlook')"><span class="dot"></span><span class="name">Severe risk areas</span></button>
     <div class="day-picker">
-      <button class="day-pick on" data-day="1" onclick="setOutlookDay(1)">D1</button>
-      <button class="day-pick" data-day="2" onclick="setOutlookDay(2)">D2</button>
-      <button class="day-pick" data-day="3" onclick="setOutlookDay(3)">D3</button>
+      <button class="day-pick on" data-day="1" onclick="setOutlookDay(1)">Today</button>
+      <button class="day-pick" data-day="2" onclick="setOutlookDay(2)">Tomorrow</button>
+      <button class="day-pick" data-day="3" onclick="setOutlookDay(3)">Day 3</button>
     </div>
-    <button class="layer-btn" data-layer="prob-tornado" onclick="toggleLayer('prob-tornado')"><span class="dot"></span><span class="name">Tornado Prob</span></button>
-    <button class="layer-btn" data-layer="prob-hail" onclick="toggleLayer('prob-hail')"><span class="dot"></span><span class="name">Hail Prob</span></button>
-    <button class="layer-btn" data-layer="prob-wind" onclick="toggleLayer('prob-wind')"><span class="dot"></span><span class="name">Wind Prob</span></button>
-    <button class="layer-btn" data-layer="mcd" onclick="toggleLayer('mcd')"><span class="dot"></span><span class="name">Mesoscale Disc.</span></button>
+    <button class="layer-btn" data-layer="prob-tornado" onclick="toggleLayer('prob-tornado')"><span class="dot"></span><span class="name">Tornado chance</span></button>
+    <button class="layer-btn" data-layer="prob-hail" onclick="toggleLayer('prob-hail')"><span class="dot"></span><span class="name">Hail chance</span></button>
+    <button class="layer-btn" data-layer="prob-wind" onclick="toggleLayer('prob-wind')"><span class="dot"></span><span class="name">Wind chance</span></button>
+    <button class="layer-btn" data-layer="mcd" onclick="toggleLayer('mcd')"><span class="dot"></span><span class="name">Live forecaster notes</span></button>
   </div>
   <div class="layer-section">
-    <div class="layer-section-header">Reports &amp; Tropical</div>
-    <button class="layer-btn" data-layer="reports" onclick="toggleLayer('reports')"><span class="dot"></span><span class="name">Storm Reports (24h)</span></button>
+    <div class="layer-section-header">Recent damage &amp; tropical</div>
+    <button class="layer-btn" data-layer="reports" onclick="toggleLayer('reports')"><span class="dot"></span><span class="name">Damage reports (24h)</span></button>
     <button class="layer-btn" data-layer="hurricanes" onclick="toggleLayer('hurricanes')"><span class="dot"></span><span class="name">Hurricanes</span></button>
   </div>
   <div class="layer-section">
-    <div class="layer-section-header">Map</div>
-    <button class="layer-btn" data-layer="dark" onclick="toggleLayer('dark')"><span class="dot"></span><span class="name">Dark Map</span></button>
+    <div class="layer-section-header">Map style</div>
+    <button class="layer-btn" data-layer="dark" onclick="toggleLayer('dark')"><span class="dot"></span><span class="name">Dark map</span></button>
   </div>
 </div>
 
@@ -612,6 +722,28 @@
       <button class="panel-close" onclick="closeAlertDetail()">✕</button>
     </div>
     <div class="alert-detail-body" id="adBody">—</div>
+  </div>
+</div>
+
+<!-- Mobile bottom nav -->
+<nav class="bottom-nav">
+  <a href="/" class="bn-item active"><span class="icon">⚡</span><span>Radar</span></a>
+  <a href="/forecast.html" class="bn-item"><span class="icon">☀</span><span>Forecast</span></a>
+  <a href="/saved.html" class="bn-item"><span class="icon">★</span><span>Saved</span></a>
+  <a href="/alerts.html" class="bn-item"><span class="icon">⚠</span><span>Alerts</span></a>
+  <a href="/settings.html" class="bn-item"><span class="icon">⚙</span><span>More</span></a>
+</nav>
+
+<!-- First-run welcome modal -->
+<div class="welcome-modal" id="welcomeModal">
+  <div class="welcome-card">
+    <div class="icon">🌩️</div>
+    <h2>Welcome to Stormwatch</h2>
+    <p>Free, live weather radar, forecasts, and severe-storm alerts — all from the public NWS feed. Where do you want to start?</p>
+    <div class="actions">
+      <button onclick="welcomeUseLocation()">📍 Use my location</button>
+      <button class="secondary" onclick="welcomeExplore()">Just explore the map</button>
+    </div>
   </div>
 </div>
 
@@ -1460,8 +1592,15 @@ async function fetchDiscussion(lat, lon, wfo) {
 // ===========================================================================
 // PANEL + TABS
 // ===========================================================================
-function openPanel(pane = 'forecast') { document.getElementById('panel').classList.add('show'); switchPane(pane); }
-function closePanel() { document.getElementById('panel').classList.remove('show'); }
+function openPanel(pane = 'forecast') {
+  document.getElementById('panel').classList.add('show');
+  document.body.classList.add('panel-open');
+  switchPane(pane);
+}
+function closePanel() {
+  document.getElementById('panel').classList.remove('show');
+  document.body.classList.remove('panel-open');
+}
 function switchPane(name) {
   document.querySelectorAll('.panel-tab').forEach(b => b.classList.toggle('active', b.dataset.pane === name));
   document.querySelectorAll('.panel-pane').forEach(p => p.classList.toggle('active', p.id === 'pane' + name.charAt(0).toUpperCase() + name.slice(1)));
@@ -1556,6 +1695,70 @@ function toggleLegend() {
 }
 
 // ===========================================================================
+// LAYER PANEL COLLAPSE (mobile)
+// ===========================================================================
+function updateLayerCount() {
+  const on = document.querySelectorAll('.layer-btn.on:not([data-layer="dark"])').length;
+  const el = document.getElementById('layerCount');
+  if (el) el.textContent = on;
+}
+function onLayerPanelClick(e) {
+  const panel = document.getElementById('layers');
+  // Tap on collapsed-state chip expands the panel
+  if (panel.classList.contains('collapsed')) {
+    const chip = e.target.closest('.layers-collapsed-chip');
+    if (chip) {
+      panel.classList.remove('collapsed');
+      e.stopPropagation();
+    }
+  }
+}
+function maybeCollapseLayers() {
+  if (window.innerWidth <= 700) {
+    document.getElementById('layers').classList.add('collapsed');
+  }
+}
+// Tap outside the layers panel on mobile re-collapses it
+document.addEventListener('click', (e) => {
+  if (window.innerWidth > 700) return;
+  const panel = document.getElementById('layers');
+  if (panel.classList.contains('collapsed')) return;
+  if (e.target.closest('.layers') || e.target.closest('.layer-btn')) return;
+  panel.classList.add('collapsed');
+});
+
+// ===========================================================================
+// FIRST-RUN WELCOME MODAL
+// ===========================================================================
+function maybeShowWelcome() {
+  if (localStorage.getItem('stormwatch_visited')) return;
+  // Skip welcome if user landed with URL params (e.g. from saved locations)
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('lat')) {
+    localStorage.setItem('stormwatch_visited', '1');
+    return;
+  }
+  // Skip if they already have a primary saved location
+  try {
+    const locs = JSON.parse(localStorage.getItem('stormwatch_locations') || '[]');
+    if (locs.find(l => l.is_primary)) {
+      localStorage.setItem('stormwatch_visited', '1');
+      return;
+    }
+  } catch {}
+  document.getElementById('welcomeModal').classList.add('show');
+}
+function welcomeDismiss() {
+  document.getElementById('welcomeModal').classList.remove('show');
+  localStorage.setItem('stormwatch_visited', '1');
+}
+function welcomeUseLocation() {
+  welcomeDismiss();
+  document.getElementById('locateBtn').click();
+}
+function welcomeExplore() { welcomeDismiss(); }
+
+// ===========================================================================
 // SEARCH + GEOLOCATION
 // ===========================================================================
 let searchTimeout = null;
@@ -1631,6 +1834,12 @@ function escapeHtml(s) {
 }
 
 initMap();
+maybeCollapseLayers();
+maybeShowWelcome();
+// Keep the collapsed-pill count in sync as toggles change
+const _origToggle = toggleLayer;
+toggleLayer = async function(...args) { await _origToggle(...args); updateLayerCount(); };
+updateLayerCount();
 
 // Auto-refresh schedule
 setInterval(loadRadarFrames, 5 * 60 * 1000);
