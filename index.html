@@ -508,6 +508,31 @@
     body.panel-open .topbar { display: none; }
   }
 
+  /* Always-collapsed layers panel — applies to desktop AND mobile now.
+     Apple-Maps-style: panel is a small chip by default, tap to expand. */
+  .layers {
+    max-height: 44px;
+    width: auto;
+    overflow: hidden;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  .layers.expanded {
+    max-height: calc(100vh - 200px - var(--safe-top) - var(--safe-bottom));
+    overflow-y: auto;
+    padding: 8px;
+    width: 220px;
+    cursor: default;
+  }
+  .layers .layer-section, .layers .day-picker { display: none; }
+  .layers.expanded .layer-section, .layers.expanded .day-picker { display: flex; flex-direction: column; }
+  .layers.expanded .day-picker { flex-direction: row; }
+  .layers .layers-collapsed-chip { display: flex; }
+  .layers.expanded .layers-collapsed-chip { display: none; }
+  .layers-collapsed-chip { align-items: center; gap: 6px; color: var(--text); font-size: 13px; font-weight: 800; }
+  .layers-collapsed-chip .count { color: var(--accent); }
+  .layers-expand-arrow { color: var(--text-2); font-size: 12px; margin-left: 4px; }
+
   /* ===========================================================
      Mobile bottom nav (visible on phones only) — clears time control
   =========================================================== */
@@ -544,20 +569,6 @@
     .time-control { bottom: calc(72px + var(--safe-bottom)); }
     .legend-toggle { bottom: calc(138px + var(--safe-bottom)); }
     .legend { bottom: calc(174px + var(--safe-bottom)); }
-    /* Layer panel default-collapsed on mobile */
-    .layers.collapsed {
-      max-height: 44px;
-      width: auto;
-      overflow: hidden;
-      padding: 6px 10px;
-      cursor: pointer;
-    }
-    .layers.collapsed .layer-section,
-    .layers.collapsed .day-picker { display: none; }
-    .layers.collapsed .layers-collapsed-chip { display: flex; }
-    .layers-collapsed-chip { display: none; align-items: center; gap: 6px; color: var(--text); font-size: 13px; font-weight: 800; }
-    .layers-collapsed-chip .count { color: var(--accent); }
-    .layers-expand-arrow { color: var(--text-2); font-size: 12px; margin-left: 4px; }
   }
 
   /* First-run welcome modal */
@@ -1668,8 +1679,10 @@ function setupWindCanvas() {
   if (canvas) return canvas;
   canvas = document.createElement('canvas');
   canvas.id = 'windCanvas';
-  canvas.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:1;';
-  document.getElementById('map').appendChild(canvas);
+  // position:fixed at z-index 2 so MapLibre's internal canvases never end up
+  // on top; pointer-events:none so the map below still receives clicks
+  canvas.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2;display:block;';
+  document.body.appendChild(canvas);
   resizeWindCanvas();
   return canvas;
 }
@@ -1678,11 +1691,12 @@ function resizeWindCanvas() {
   if (!c) return;
   const rect = document.getElementById('map').getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  c.width = rect.width * dpr;
-  c.height = rect.height * dpr;
+  c.width = Math.max(1, rect.width * dpr);
+  c.height = Math.max(1, rect.height * dpr);
   c.style.width = rect.width + 'px';
   c.style.height = rect.height + 'px';
   const ctx = c.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);  // reset before scaling (avoids compounding on repeat resize)
   ctx.scale(dpr, dpr);
 }
 
@@ -2049,26 +2063,20 @@ function updateLayerCount() {
 function onLayerPanelClick(e) {
   const panel = document.getElementById('layers');
   // Tap on collapsed-state chip expands the panel
-  if (panel.classList.contains('collapsed')) {
+  if (!panel.classList.contains('expanded')) {
     const chip = e.target.closest('.layers-collapsed-chip');
     if (chip) {
-      panel.classList.remove('collapsed');
+      panel.classList.add('expanded');
       e.stopPropagation();
     }
   }
 }
-function maybeCollapseLayers() {
-  if (window.innerWidth <= 700) {
-    document.getElementById('layers').classList.add('collapsed');
-  }
-}
-// Tap outside the layers panel on mobile re-collapses it
+// Tap anywhere outside the layers panel re-collapses it (Apple-Maps behavior)
 document.addEventListener('click', (e) => {
-  if (window.innerWidth > 700) return;
   const panel = document.getElementById('layers');
-  if (panel.classList.contains('collapsed')) return;
+  if (!panel.classList.contains('expanded')) return;
   if (e.target.closest('.layers') || e.target.closest('.layer-btn')) return;
-  panel.classList.add('collapsed');
+  panel.classList.remove('expanded');
 });
 
 // ===========================================================================
@@ -2178,7 +2186,7 @@ function escapeHtml(s) {
 }
 
 initMap();
-maybeCollapseLayers();
+// Layers panel starts collapsed everywhere (was mobile-only before — cleaner default)
 maybeShowWelcome();
 // Keep the collapsed-pill count in sync as toggles change
 const _origToggle = toggleLayer;
