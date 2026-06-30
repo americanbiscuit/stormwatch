@@ -453,10 +453,12 @@
   .maplibregl-popup-tip { border-top-color: var(--surface) !important; border-bottom-color: var(--surface) !important; }
   .maplibregl-popup-close-button { color: var(--text-2) !important; font-size: 18px !important; padding: 2px 6px !important; }
 
-  /* Stack outlook chip BELOW alert banner when both visible */
-  .alert-banner.show ~ .outlook-chip.show { top: calc(116px + var(--safe-top)); }
-  /* Push the layers panel down so the warning banner doesn't cover it */
-  .alert-banner.show ~ .layers { top: calc(116px + var(--safe-top)); }
+  /* Stack outlook chip + layers panel BELOW alert banner when banner is visible.
+     Belt-and-suspenders: the sibling selector + an unconditional body-class rule. */
+  .alert-banner.show ~ .outlook-chip.show { top: calc(116px + var(--safe-top)) !important; }
+  .alert-banner.show ~ .layers { top: calc(116px + var(--safe-top)) !important; }
+  body.has-banner .layers { top: calc(116px + var(--safe-top)) !important; }
+  body.has-banner .outlook-chip.show { top: calc(116px + var(--safe-top)) !important; }
 
   /* When the side panel is open, push the alert banner left so it doesn't overlap.
      On phones (panel = full width), hide the banner entirely while the panel is open. */
@@ -563,12 +565,51 @@
   .welcome-card .actions button.secondary:hover { color: var(--text); border-color: var(--text-2); }
 
   @media (max-width: 640px) {
-    .logo-chip { padding: 6px 9px; font-size: 12px; }
-    .logo-chip .bolt { font-size: 13px; }
-    .topbar .nav-chip { display: none; }  /* hidden on mobile (bottom nav replaces it) */
+    /* Apple-Maps-style cleaner mobile chrome */
+    .logo-chip { display: none; }                    /* logo hidden — bottom nav has the radar icon */
+    .topbar .nav-chip { display: none; }             /* nav hidden — bottom nav replaces it */
+    .topbar { gap: 8px; }
     .outlook-chip { top: calc(64px + var(--safe-top)); left: 12px; right: auto; }
     .time-control { padding: 8px 12px; gap: 8px; }
     .time-value { font-size: 12px; }
+  }
+
+  /* ===========================================================
+     Side panel → bottom sheet on mobile (Apple-Maps style)
+     The panel slides UP from the bottom with a drag-handle visual,
+     instead of sliding in from the right.
+  =========================================================== */
+  @media (max-width: 700px) {
+    .panel {
+      top: auto;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      max-width: none;
+      max-height: 80vh;
+      border-left: none;
+      border-top: 1px solid var(--border);
+      border-top-left-radius: 20px;
+      border-top-right-radius: 20px;
+      transform: translateY(100%);
+      box-shadow: 0 -8px 30px rgba(0,0,0,0.4);
+    }
+    .panel.show { transform: translateY(0); }
+    /* Visual drag handle */
+    .panel-head { padding-top: 8px; position: relative; }
+    .panel-head::before {
+      content: '';
+      display: block;
+      width: 40px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin: 0 auto 12px;
+    }
+    /* Bottom sheet leaves room for the bottom nav */
+    .panel { bottom: calc(56px + var(--safe-bottom)); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+    .panel-body { padding-bottom: 20px; }
   }
 </style>
 </head>
@@ -617,6 +658,7 @@
     <button class="layer-btn on" data-layer="radar" onclick="toggleLayer('radar')"><span class="dot"></span><span class="name">Radar (rain &amp; storms)</span></button>
     <button class="layer-btn" data-layer="satellite" onclick="toggleLayer('satellite')"><span class="dot"></span><span class="name">Satellite (clouds)</span></button>
     <button class="layer-btn" data-layer="metar" onclick="toggleLayer('metar')"><span class="dot"></span><span class="name">Airport temps</span></button>
+    <button class="layer-btn" data-layer="wind" onclick="toggleLayer('wind')"><span class="dot"></span><span class="name">Wind arrows</span></button>
   </div>
   <div class="layer-section">
     <div class="layer-section-header">Severe threats</div>
@@ -685,9 +727,15 @@
     <div class="legend-row"><div class="legend-swatch circle" style="background:#a855f7"></div><span class="name">Current position</span></div>
   </div>
   <div class="legend-group">
-    <h4>Surface Obs</h4>
+    <h4>Surface Obs &amp; Wind</h4>
     <div class="legend-row"><span style="color:#fb923c; font-weight:800;">85°</span><span class="desc">temperature (°F)</span></div>
-    <div class="legend-row"><span style="color:var(--text-2); font-size:10px;">wind barb shows direction + speed</span></div>
+    <div class="legend-row"><span style="color:#9ba2b0; font-weight:800;">→</span><span class="name">Calm</span><span class="desc">&lt; 10mph</span></div>
+    <div class="legend-row"><span style="color:#38bdf8; font-weight:800;">→</span><span class="name">Light</span><span class="desc">~10mph</span></div>
+    <div class="legend-row"><span style="color:#4ade80; font-weight:800;">→</span><span class="name">Moderate</span><span class="desc">~20mph</span></div>
+    <div class="legend-row"><span style="color:#fbbf24; font-weight:800;">→</span><span class="name">Strong</span><span class="desc">~30mph</span></div>
+    <div class="legend-row"><span style="color:#fb923c; font-weight:800;">→</span><span class="name">Very strong</span><span class="desc">~40mph</span></div>
+    <div class="legend-row"><span style="color:#f43f5e; font-weight:800;">→</span><span class="name">Gale</span><span class="desc">55mph+</span></div>
+    <div class="legend-row"><span style="color:var(--muted); font-size:10px;">Arrow points where wind is blowing TO</span></div>
   </div>
 </div>
 
@@ -774,6 +822,7 @@ const PREF_DEFAULTS = {
   layer_radar: true,
   layer_satellite: false,
   layer_metar: false,
+  layer_wind: false,
   layer_alerts: true,
   layer_outlook: false,
   layer_prob_tornado: false,
@@ -886,7 +935,7 @@ function initMap() {
     if (STATE.prefs.layer_mcd) await loadMCD();
     if (STATE.prefs.layer_reports) await loadStormReports();
     if (STATE.prefs.layer_hurricanes) await loadHurricanes();
-    if (STATE.prefs.layer_metar) await loadMetarForView();
+    if (STATE.prefs.layer_metar || STATE.prefs.layer_wind) await loadMetarForView();
     setupClickHandler();
     if (panelLat != null && panelLon != null) {
       setTimeout(() => fetchForecast(panelLat, panelLon, panelLabel), 400);
@@ -901,7 +950,7 @@ function initMap() {
       const dist = Math.abs(STATE._lastAlertCheck.lat - c.lat) + Math.abs(STATE._lastAlertCheck.lng - c.lng);
       if (dist > 2) loadAlertsForMapView();
     }
-    if (STATE.prefs.layer_metar) loadMetarForView();
+    if (STATE.prefs.layer_metar || STATE.prefs.layer_wind) loadMetarForView();
   });
 }
 
@@ -1091,10 +1140,15 @@ function renderAlertBanner() {
   const banner = document.getElementById('alertBanner');
   const surf = STATE.prefs.notify_severities || ['Extreme', 'Severe'];
   const surfaceable = STATE.alerts.filter(a => surf.includes(a.severity));
-  if (!surfaceable.length) { banner.classList.remove('show'); return; }
+  if (!surfaceable.length) {
+    banner.classList.remove('show');
+    document.body.classList.remove('has-banner');
+    return;
+  }
   const top = surfaceable[0];
   const cls = top.severity === 'Extreme' ? '' : top.severity === 'Severe' ? 'warn' : top.severity === 'Moderate' ? 'watch' : 'advisory';
   banner.className = `alert-banner show ${cls}`;
+  document.body.classList.add('has-banner');
   document.getElementById('alertCount').textContent = surfaceable.length;
   document.getElementById('alertLabel').textContent = top.event + (surfaceable.length > 1 ? ` + ${surfaceable.length - 1} more` : '');
 }
@@ -1485,6 +1539,37 @@ function renderMetarOverlay(fc) {
       'text-halo-width': 1.2,
     },
   });
+  // Wind arrows: same source as METAR temps; uses sknt (wind speed kt) and drct (direction degrees).
+  // NWS direction is where wind comes FROM, so to make the arrow point in the direction wind is GOING,
+  // we rotate by drct + 180. The Unicode → symbol points east at 0° baseline.
+  STATE.map.addLayer({
+    id: 'wind-arrow', type: 'symbol', source: 'metar-source',
+    minzoom: 5,
+    filter: ['all', ['has', 'drct'], ['has', 'sknt'], ['>', ['get', 'sknt'], 0]],
+    layout: {
+      'text-field': '→',
+      'text-size': ['interpolate', ['linear'], ['coalesce', ['get', 'sknt'], 0], 0, 14, 10, 20, 25, 28, 50, 36],
+      'text-rotate': ['+', ['coalesce', ['get', 'drct'], 0], 180],
+      'text-allow-overlap': true,
+      'text-ignore-placement': true,
+      'text-anchor': 'center',
+      'text-rotation-alignment': 'map',
+      visibility: STATE.prefs.layer_wind ? 'visible' : 'none',
+    },
+    paint: {
+      'text-color': [
+        'interpolate', ['linear'], ['coalesce', ['get', 'sknt'], 0],
+        0, '#9ba2b0',     // calm — gray
+        8, '#38bdf8',     // light breeze — sky blue
+        17, '#4ade80',    // moderate (~20mph) — green
+        26, '#fbbf24',    // strong (~30mph) — yellow
+        35, '#fb923c',    // very strong (~40mph) — orange
+        50, '#f43f5e',    // gale (~55mph+) — red
+      ],
+      'text-halo-color': '#0d1117',
+      'text-halo-width': 2,
+    },
+  });
   STATE.map.on('click', 'metar-dot', (e) => {
     const f = e.features?.[0]; if (!f) return;
     const p = f.properties || {};
@@ -1647,6 +1732,11 @@ async function toggleLayer(name) {
     setVis('metar-dot', newOn);
     setVis('metar-temp', newOn);
   }
+  else if (name === 'wind') {
+    STATE.prefs.layer_wind = newOn;
+    if (newOn) await loadMetarForView();   // wind arrows reuse the METAR source
+    setVis('wind-arrow', newOn);
+  }
   else if (name === 'alerts') {
     STATE.prefs.layer_alerts = newOn;
     setVis('alerts-fill', newOn);
@@ -1696,7 +1786,7 @@ async function toggleLayer(name) {
       if (STATE.prefs.layer_mcd) loadMCD();
       if (STATE.prefs.layer_reports) loadStormReports();
       if (STATE.prefs.layer_hurricanes) loadHurricanes();
-      if (STATE.prefs.layer_metar) loadMetarForView();
+      if (STATE.prefs.layer_metar || STATE.prefs.layer_wind) loadMetarForView();
     });
   }
   savePrefs();
@@ -1883,7 +1973,7 @@ setInterval(() => { ['tornado', 'hail', 'wind'].forEach(t => { if (STATE.prefs[`
 setInterval(() => { if (STATE.prefs.layer_mcd) loadMCD(); }, 5 * 60 * 1000);
 setInterval(() => { if (STATE.prefs.layer_reports) loadStormReports(); }, 5 * 60 * 1000);
 setInterval(() => { if (STATE.prefs.layer_hurricanes) loadHurricanes(); }, 15 * 60 * 1000);
-setInterval(() => { if (STATE.prefs.layer_metar) loadMetarForView(); }, 10 * 60 * 1000);
+setInterval(() => { if (STATE.prefs.layer_metar || STATE.prefs.layer_wind) loadMetarForView(); }, 10 * 60 * 1000);
 </script>
 
 </body>
