@@ -1671,8 +1671,17 @@ function renderMetarOverlay(fc) {
 // Particles are advected by bilinearly-interpolated U/V wind components and
 // drawn with fading trails; old/out-of-bounds particles respawn randomly.
 // ===========================================================================
-const WIND_GRID = 16;          // 16x16 = 256 sample points across viewport (~50km grid for a CONUS view)
-const WIND_PARTICLE_COUNT = 600;
+// Wind grid: zoom-aware. Sparser at country view (where 30x30 would mostly
+// resample the same broad systems), denser when zoomed in for HRRR's 3km
+// native resolution to actually show through. Capped at 32x32 = 1024 points
+// (~Open-Meteo single-call ceiling).
+function windGridForZoom(z) {
+  if (z >= 8) return 32;   // city/county view → ~3-10 km grid (HRRR native)
+  if (z >= 6) return 28;   // multi-state view → ~15 km
+  if (z >= 5) return 24;   // regional view → ~30 km
+  return 20;               // CONUS view → ~70 km
+}
+const WIND_PARTICLE_COUNT = 800;
 const WIND_MAX_AGE = 80;       // frames before respawn
 const WIND_SPEED_SCALE = 0.4;  // pixels per frame per mph
 const WIND_FADE_RATE = 0.04;   // alpha removed per frame (higher = shorter trails)
@@ -1707,55 +1716,38 @@ async function fetchWindField() {
   const b = STATE.map.getBounds();
   const south = b.getSouth(), north = b.getNorth();
   const west = b.getWest(), east = b.getEast();
-  const latStep = (north - south) / (WIND_GRID - 1);
-  const lonStep = (east - west) / (WIND_GRID - 1);
-  const lats = [], lons = [];
-  for (let i = 0; i < WIND_GRID; i++) {
-    for (let j = 0; j < WIND_GRID; j++) {
-      lats.push((south + i * latStep).toFixed(3));
-      lons.push((west + j * lonStep).toFixed(3));
-    }
-  }
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=mph`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
+  const grid = windGridForZoom(STATE.map.getZoom());
+  // Server-side proxy so we can request up to 1024 points without hitting
+  // browser URL length limits; cached at the edge for 5 min
+  const res = await fetch(`/api/wind-field?south=${south.toFixed(3)}&west=${west.toFixed(3)}&north=${north.toFixed(3)}&east=${east.toFixed(3)}&grid=${grid}`);
+  if (!res.ok) throw new Error(`wind-field ${res.status}`);
   const data = await res.json();
-  // Response: array of {current: {wind_speed_10m, wind_direction_10m}, ...} OR a single object if one point
-  const arr = Array.isArray(data) ? data : [data];
-  // Build a 2D grid: STATE.windGrid[i][j] = {u, v, speed}
-  const grid = [];
-  for (let i = 0; i < WIND_GRID; i++) {
-    grid.push([]);
-    for (let j = 0; j < WIND_GRID; j++) {
-      const idx = i * WIND_GRID + j;
-      const d = arr[idx]?.current;
-      if (!d || d.wind_speed_10m == null) { grid[i].push(null); continue; }
-      const dirRad = (d.wind_direction_10m || 0) * Math.PI / 180;
-      const speed = d.wind_speed_10m;
-      // NWS/met convention: direction is where the wind comes FROM.
-      // To get the wind vector (going TO), flip 180° → u = -speed*sin(dir), v = -speed*cos(dir).
-      // Then in screen space, V is northward but Y increases downward, so screen-y = -V.
-      const u = -speed * Math.sin(dirRad);  // eastward component
-      const v = -speed * Math.cos(dirRad);  // northward component
-      grid[i].push({ u, v, speed });
+  // Re-pack the flat points array into a 2D grid for fast interpolation
+  const g = [];
+  for (let i = 0; i < data.grid; i++) {
+    g.push([]);
+    for (let j = 0; j < data.grid; j++) {
+      g[i].push(data.points[i * data.grid + j]);
     }
   }
-  STATE.windGrid = grid;
+  STATE.windGrid = g;
+  STATE.windGridSize = data.grid;
   STATE.windBounds = { south, north, west, east };
 }
 
 function sampleWind(lat, lon) {
-  if (!STATE.windGrid || !STATE.windBounds) return null;
+  const N = STATE.windGridSize;
+  if (!STATE.windGrid || !STATE.windBounds || !N) return null;
   const { south, north, west, east } = STATE.windBounds;
   if (lat < south || lat > north || lon < west || lon > east) return null;
-  const fy = ((lat - south) / (north - south)) * (WIND_GRID - 1);
-  const fx = ((lon - west) / (east - west)) * (WIND_GRID - 1);
+  const fy = ((lat - south) / (north - south)) * (N - 1);
+  const fx = ((lon - west)  / (east  - west))  * (N - 1);
   const i0 = Math.floor(fy), j0 = Math.floor(fx);
-  const i1 = Math.min(i0 + 1, WIND_GRID - 1), j1 = Math.min(j0 + 1, WIND_GRID - 1);
+  const i1 = Math.min(i0 + 1, N - 1), j1 = Math.min(j0 + 1, N - 1);
   const ty = fy - i0, tx = fx - j0;
   const g = STATE.windGrid;
   const a = g[i0]?.[j0], b = g[i0]?.[j1], c = g[i1]?.[j0], d = g[i1]?.[j1];
-  if (!a || !b || !c || !d) return a || b || c || d || null;  // fall back to any
+  if (!a || !b || !c || !d) return a || b || c || d || null;
   const u = a.u * (1 - tx) * (1 - ty) + b.u * tx * (1 - ty) + c.u * (1 - tx) * ty + d.u * tx * ty;
   const v = a.v * (1 - tx) * (1 - ty) + b.v * tx * (1 - ty) + c.v * (1 - tx) * ty + d.v * tx * ty;
   const speed = Math.sqrt(u * u + v * v);
