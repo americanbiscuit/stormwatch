@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0" />
+<meta name="theme-color" content="#0d1117" />
+<title>Stormwatch — Live Weather Radar</title>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-2: #1c2128;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-2: #9ba2b0;
+    --muted: #6e7681;
+    --accent: #38bdf8;             /* sky blue */
+    --accent-soft: rgba(56, 189, 248, 0.15);
+    --green: #4ade80;
+    --warn: #fbbf24;
+    --severe: #fb923c;
+    --extreme: #f43f5e;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  #map { position: absolute; top: 0; bottom: 0; left: 0; right: 0; background: var(--bg); }
+
+  /* ============ TOP BAR ============ */
+  .topbar {
+    position: absolute;
+    top: calc(12px + var(--safe-top));
+    left: 12px;
+    right: 12px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .topbar > * { pointer-events: auto; }
+  .logo-chip {
+    background: rgba(13, 17, 23, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 12px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+  .logo-chip .bolt { color: var(--accent); font-size: 17px; }
+  .search-wrap {
+    flex: 1;
+    position: relative;
+    min-width: 0;
+  }
+  .search-input {
+    width: 100%;
+    background: rgba(13, 17, 23, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 14px 10px 38px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+  }
+  .search-input:focus { outline: none; border-color: var(--accent); }
+  .search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-2);
+    pointer-events: none;
+    font-size: 14px;
+  }
+  .search-results {
+    position: absolute;
+    top: 100%;
+    left: 0; right: 0;
+    margin-top: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    display: none;
+    z-index: 11;
+  }
+  .search-results.show { display: block; }
+  .search-result-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .search-result-item:last-child { border-bottom: none; }
+  .search-result-item:hover { background: var(--surface-2); color: var(--accent); }
+  .search-result-item .sub { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+  .icon-chip {
+    background: rgba(13, 17, 23, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    transition: all 0.15s;
+  }
+  .icon-chip:hover { color: var(--accent); border-color: var(--accent); }
+  .icon-chip:active { transform: scale(0.95); }
+
+  /* ============ ALERT BANNER ============ */
+  .alert-banner {
+    position: absolute;
+    top: calc(64px + var(--safe-top));
+    left: 12px;
+    right: 12px;
+    z-index: 9;
+    display: none;
+    background: var(--extreme);
+    color: white;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(244, 63, 94, 0.4);
+    animation: pulse 2.5s ease-in-out infinite;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .alert-banner.show { display: flex; }
+  .alert-banner.warn { background: var(--severe); box-shadow: 0 4px 16px rgba(251, 146, 60, 0.3); }
+  .alert-banner.watch { background: var(--warn); color: #1a1a1a; box-shadow: 0 4px 16px rgba(251, 191, 36, 0.3); }
+  .alert-banner.advisory { background: var(--accent); color: #0d1117; box-shadow: 0 4px 16px rgba(56, 189, 248, 0.3); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.85; } }
+  .alert-banner .count {
+    background: rgba(0,0,0,0.25);
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+  }
+  .alert-banner .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .alert-banner .chev { font-weight: 800; font-size: 16px; }
+
+  /* ============ LAYER CONTROLS ============ */
+  .layers {
+    position: absolute;
+    top: calc(64px + var(--safe-top));
+    right: 12px;
+    background: rgba(13, 17, 23, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8px;
+    z-index: 8;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 180px;
+  }
+  .layer-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-2);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .layer-btn:hover { background: var(--surface-2); color: var(--text); }
+  .layer-btn.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .layer-btn .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted);
+  }
+  .layer-btn.on .dot { background: var(--accent); }
+
+  /* ============ TIME SLIDER ============ */
+  .time-control {
+    position: absolute;
+    bottom: calc(14px + var(--safe-bottom));
+    left: 12px;
+    right: 12px;
+    background: rgba(13, 17, 23, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px 14px;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  .play-btn {
+    background: var(--accent);
+    border: none;
+    color: var(--bg);
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .play-btn:hover { transform: scale(1.05); }
+  .time-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .time-label {
+    font-size: 12px;
+    color: var(--text-2);
+    font-weight: 600;
+  }
+  .time-value {
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 800;
+    letter-spacing: -0.2px;
+  }
+  .time-slider {
+    flex: 2;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--border);
+    border-radius: 999px;
+    outline: none;
+  }
+  .time-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+  }
+  .time-slider::-moz-range-thumb {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+  }
+  .frame-type {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .frame-type.past { background: var(--accent-soft); color: var(--accent); }
+  .frame-type.future { background: rgba(74, 222, 128, 0.15); color: var(--green); }
+
+  /* ============ SIDE PANEL (forecast + alerts) ============ */
+  .panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 420px;
+    background: var(--bg);
+    border-left: 1px solid var(--border);
+    z-index: 20;
+    transform: translateX(100%);
+    transition: transform 0.25s ease-out;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panel.show { transform: translateX(0); }
+  .panel-head {
+    padding: calc(16px + var(--safe-top)) 18px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .panel-head-info { flex: 1; min-width: 0; }
+  .panel-loc {
+    font-size: 12px;
+    color: var(--text-2);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    font-weight: 700;
+  }
+  .panel-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text);
+    margin-top: 4px;
+    letter-spacing: -0.5px;
+  }
+  .panel-close {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .panel-body { overflow-y: auto; flex: 1; padding-bottom: calc(20px + var(--safe-bottom)); }
+
+  .panel-section { padding: 16px 18px; border-bottom: 1px solid var(--border); }
+  .panel-section h3 {
+    margin: 0 0 12px;
+    font-size: 11px;
+    color: var(--text-2);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-weight: 800;
+  }
+  .panel-section h3 .accent-bar {
+    display: inline-block;
+    width: 3px; height: 12px;
+    background: var(--accent);
+    margin-right: 6px;
+    vertical-align: middle;
+    border-radius: 1px;
+  }
+
+  /* Current conditions card */
+  .current-card {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 14px;
+  }
+  .current-card .big {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .current-card .temp {
+    font-size: 56px;
+    font-weight: 200;
+    letter-spacing: -2px;
+    line-height: 1;
+  }
+  .current-card .conditions {
+    font-size: 14px;
+    color: var(--text-2);
+    font-weight: 600;
+  }
+  .stat {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    padding: 4px 0;
+  }
+  .stat .k { color: var(--text-2); }
+  .stat .v { color: var(--text); font-weight: 700; }
+
+  /* Hourly horizontal scroll */
+  .hourly-scroll {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 0 18px 16px;
+    scroll-snap-type: x mandatory;
+  }
+  .hourly-cell {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 6px;
+    min-width: 64px;
+    text-align: center;
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+  .hourly-cell .h { font-size: 11px; color: var(--text-2); font-weight: 700; }
+  .hourly-cell .t { font-size: 16px; font-weight: 800; margin: 4px 0; }
+  .hourly-cell .p { font-size: 10px; color: var(--accent); font-weight: 700; }
+
+  /* Daily list */
+  .daily-row {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .daily-row:last-of-type { border-bottom: none; }
+  .daily-row .day { font-weight: 700; font-size: 13px; }
+  .daily-row .short { color: var(--text-2); font-size: 12px; }
+  .daily-row .temps { font-weight: 800; font-size: 14px; white-space: nowrap; }
+  .daily-row .temps .lo { color: var(--text-2); font-weight: 600; }
+
+  /* Alert items */
+  .alert-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    cursor: pointer;
+  }
+  .alert-item.extreme { border-left-color: var(--extreme); }
+  .alert-item.severe { border-left-color: var(--severe); }
+  .alert-item.moderate { border-left-color: var(--warn); }
+  .alert-item.minor { border-left-color: var(--accent); }
+  .alert-item .ev { font-weight: 800; font-size: 14px; margin-bottom: 4px; }
+  .alert-item .area { font-size: 11px; color: var(--text-2); margin-bottom: 6px; }
+  .alert-item .when { font-size: 11px; color: var(--muted); }
+
+  .alert-detail-modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 30;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .alert-detail-modal.show { display: flex; }
+  .alert-detail-card {
+    background: var(--bg);
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    max-width: 560px;
+    width: 100%;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-bottom: none;
+  }
+  .alert-detail-head {
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .alert-detail-head .title { font-size: 18px; font-weight: 800; }
+  .alert-detail-head .sub { font-size: 11px; color: var(--text-2); margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+  .alert-detail-body { padding: 18px 20px; overflow-y: auto; font-size: 13px; line-height: 1.6; color: var(--text-2); white-space: pre-wrap; }
+  .alert-detail-body strong { color: var(--text); }
+
+  /* Empty / loading */
+  .loading {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-2);
+    font-size: 13px;
+  }
+  .empty {
+    padding: 30px 20px;
+    text-align: center;
+    color: var(--text-2);
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  /* Attribution chip */
+  .attrib {
+    position: absolute;
+    bottom: calc(8px + var(--safe-bottom));
+    right: 8px;
+    background: rgba(13, 17, 23, 0.6);
+    color: var(--muted);
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    z-index: 5;
+    pointer-events: auto;
+  }
+  .attrib a { color: var(--text-2); text-decoration: none; }
+  .attrib a:hover { color: var(--accent); }
+
+  /* Hide MapLibre default attribution since we provide our own */
+  .maplibregl-ctrl-attrib { display: none !important; }
+  .maplibregl-ctrl-bottom-right { display: none !important; }
+
+  /* Mobile tweaks */
+  @media (max-width: 600px) {
+    .logo-chip { padding: 8px 10px; font-size: 13px; }
+    .logo-chip .bolt { font-size: 14px; }
+    .time-control { padding: 8px 12px; gap: 8px; }
+    .time-value { font-size: 13px; }
+    .layers { top: calc(112px + var(--safe-top)); max-width: 140px; }
+    .layer-btn { padding: 6px 10px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Top bar -->
+<div class="topbar">
+  <div class="logo-chip"><span class="bolt">⚡</span> Stormwatch</div>
+  <div class="search-wrap">
+    <span class="search-icon">⌕</span>
+    <input class="search-input" id="searchInput" type="text" placeholder="Search city, zip, or coordinates..." autocomplete="off" />
+    <div class="search-results" id="searchResults"></div>
+  </div>
+  <button class="icon-chip" id="locateBtn" title="My location">⊙</button>
+</div>
+
+<!-- Alert banner (appears when alerts exist near map center) -->
+<div class="alert-banner" id="alertBanner" onclick="openPanel(); switchPanelTab('alerts');">
+  <span class="count" id="alertCount">0</span>
+  <span class="label" id="alertLabel">Alerts</span>
+  <span class="chev">›</span>
+</div>
+
+<!-- Layer toggles -->
+<div class="layers" id="layers">
+  <button class="layer-btn on" data-layer="radar" onclick="toggleLayer('radar')">
+    <span class="dot"></span> Radar
+  </button>
+  <button class="layer-btn on" data-layer="alerts" onclick="toggleLayer('alerts')">
+    <span class="dot"></span> Alerts
+  </button>
+  <button class="layer-btn" data-layer="dark" onclick="toggleLayer('dark')">
+    <span class="dot"></span> Dark Map
+  </button>
+</div>
+
+<!-- Time slider (for radar playback) -->
+<div class="time-control" id="timeControl">
+  <button class="play-btn" id="playBtn" onclick="togglePlayback()">▶</button>
+  <div class="time-info">
+    <div class="time-label">Radar</div>
+    <div class="time-value" id="timeValue">Loading...</div>
+  </div>
+  <span class="frame-type past" id="frameType">PAST</span>
+  <input type="range" class="time-slider" id="timeSlider" min="0" max="0" value="0" oninput="seekFrame(this.value)" />
+</div>
+
+<!-- Forecast/Alerts panel -->
+<div class="panel" id="panel">
+  <div class="panel-head">
+    <div class="panel-head-info">
+      <div class="panel-loc" id="panelLoc">Loading...</div>
+      <div class="panel-title" id="panelTitle">—</div>
+    </div>
+    <button class="panel-close" onclick="closePanel()">✕</button>
+  </div>
+  <div class="panel-body" id="panelBody">
+    <div class="loading">Loading forecast...</div>
+  </div>
+</div>
+
+<!-- Alert detail modal -->
+<div class="alert-detail-modal" id="alertDetailModal" onclick="if(event.target.id==='alertDetailModal') closeAlertDetail()">
+  <div class="alert-detail-card">
+    <div class="alert-detail-head">
+      <div>
+        <div class="title" id="adTitle">—</div>
+        <div class="sub" id="adSub">—</div>
+      </div>
+      <button class="panel-close" onclick="closeAlertDetail()">✕</button>
+    </div>
+    <div class="alert-detail-body" id="adBody">—</div>
+  </div>
+</div>
+
+<!-- Attribution -->
+<div class="attrib">
+  Radar <a href="https://www.rainviewer.com" target="_blank">RainViewer</a> ·
+  Forecast <a href="https://www.weather.gov" target="_blank">NWS</a> ·
+  Map <a href="https://carto.com/attributions" target="_blank">CARTO</a> /
+  <a href="https://www.openstreetmap.org/copyright" target="_blank">OSM</a>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+// ============================================================
+// STATE
+// ============================================================
+const STATE = {
+  map: null,
+  radarFrames: [],        // [{time: unixSec, path: string}] both past + future
+  currentFrameIdx: 0,
+  playing: false,
+  playInterval: null,
+  alerts: [],
+  activeAlertLayer: false,
+  currentLocation: null,  // {lat, lon, label}
+  mapStyle: 'light',
+};
+
+const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json';
+const RAINVIEWER_OPTIONS = '1_1';  // color scheme 1 (Universal Blue), smooth+snow on
+const MAP_STYLES = {
+  light: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+  dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+};
+
+// ============================================================
+// MAP INIT
+// ============================================================
+function initMap() {
+  // Default center: continental US
+  const savedView = JSON.parse(localStorage.getItem('stormwatch_view') || 'null');
+  const center = savedView?.center || [-97.5, 38.5];
+  const zoom = savedView?.zoom || 4.5;
+
+  STATE.map = new maplibregl.Map({
+    container: 'map',
+    style: MAP_STYLES.light,
+    center, zoom,
+    minZoom: 3, maxZoom: 14,
+    attributionControl: false,
+  });
+
+  STATE.map.on('load', async () => {
+    await loadRadarFrames();
+    await loadAlertsForMapView();
+    setupClickHandler();
+  });
+
+  STATE.map.on('moveend', () => {
+    const c = STATE.map.getCenter();
+    const z = STATE.map.getZoom();
+    localStorage.setItem('stormwatch_view', JSON.stringify({ center: [c.lng, c.lat], zoom: z }));
+    // Refresh alerts when map moves significantly
+    if (STATE._lastAlertCheck) {
+      const dist = Math.abs(STATE._lastAlertCheck.lat - c.lat) + Math.abs(STATE._lastAlertCheck.lng - c.lng);
+      if (dist > 2) loadAlertsForMapView();
+    }
+  });
+}
+
+// ============================================================
+// RADAR (RainViewer)
+// ============================================================
+async function loadRadarFrames() {
+  try {
+    const res = await fetch(RAINVIEWER_API);
+    const data = await res.json();
+    const past = data.radar?.past || [];
+    const nowcast = data.radar?.nowcast || [];
+    const host = data.host;
+    // Build [{time, path}] for past + forecast
+    STATE.radarFrames = [
+      ...past.map(f => ({ ...f, type: 'past', host })),
+      ...nowcast.map(f => ({ ...f, type: 'future', host })),
+    ];
+    // Default to most recent past frame
+    const mostRecentPastIdx = past.length - 1;
+    STATE.currentFrameIdx = Math.max(0, mostRecentPastIdx);
+    // Set up slider
+    const slider = document.getElementById('timeSlider');
+    slider.max = STATE.radarFrames.length - 1;
+    slider.value = STATE.currentFrameIdx;
+    renderRadarFrame();
+  } catch (e) {
+    console.error('Radar load failed', e);
+    document.getElementById('timeValue').textContent = 'Radar unavailable';
+  }
+}
+
+function renderRadarFrame() {
+  const frame = STATE.radarFrames[STATE.currentFrameIdx];
+  if (!frame) return;
+  const tileUrl = `${frame.host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+  // Remove any existing radar source/layer, then re-add
+  if (STATE.map.getLayer('radar-layer')) STATE.map.removeLayer('radar-layer');
+  if (STATE.map.getSource('radar-source')) STATE.map.removeSource('radar-source');
+  STATE.map.addSource('radar-source', {
+    type: 'raster',
+    tiles: [tileUrl],
+    tileSize: 256,
+  });
+  // Add radar above base layers but below labels (insert before a label-ish layer if present)
+  const beforeId = findFirstLabelLayer();
+  STATE.map.addLayer({
+    id: 'radar-layer',
+    type: 'raster',
+    source: 'radar-source',
+    paint: { 'raster-opacity': 0.7 },
+  }, beforeId);
+
+  // Update UI
+  const d = new Date(frame.time * 1000);
+  const isToday = d.toDateString() === new Date().toDateString();
+  const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const dateStr = isToday ? 'Today' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const ago = Math.round((Date.now() / 1000 - frame.time) / 60);
+  const agoStr = ago > 0 ? `${ago} min ago` : `in ${-ago} min`;
+  document.getElementById('timeValue').textContent = `${dateStr} ${timeStr} · ${agoStr}`;
+  const ft = document.getElementById('frameType');
+  ft.textContent = frame.type === 'past' ? 'PAST' : 'FORECAST';
+  ft.className = `frame-type ${frame.type}`;
+  document.getElementById('timeSlider').value = STATE.currentFrameIdx;
+}
+
+function findFirstLabelLayer() {
+  // Insert radar BELOW labels so place names stay readable
+  const layers = STATE.map.getStyle().layers || [];
+  for (const l of layers) {
+    if (l.type === 'symbol' && l.id?.toLowerCase().includes('label')) return l.id;
+  }
+  return undefined;
+}
+
+function seekFrame(idx) {
+  STATE.currentFrameIdx = parseInt(idx);
+  renderRadarFrame();
+}
+
+function togglePlayback() {
+  STATE.playing = !STATE.playing;
+  document.getElementById('playBtn').textContent = STATE.playing ? '❚❚' : '▶';
+  if (STATE.playing) {
+    STATE.playInterval = setInterval(() => {
+      let next = STATE.currentFrameIdx + 1;
+      if (next >= STATE.radarFrames.length) next = 0;
+      STATE.currentFrameIdx = next;
+      renderRadarFrame();
+    }, 600);
+  } else {
+    clearInterval(STATE.playInterval);
+  }
+}
+
+// ============================================================
+// ALERTS (NWS)
+// ============================================================
+async function loadAlertsForMapView() {
+  const c = STATE.map.getCenter();
+  STATE._lastAlertCheck = c;
+  // For zoomed-out US view, use national alerts. For zoomed-in, use point.
+  const z = STATE.map.getZoom();
+  let url = '/api/alerts';
+  if (z > 6) url = `/api/alerts?lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    STATE.alerts = data.alerts || [];
+    renderAlertOverlay();
+    renderAlertBanner();
+  } catch (e) {
+    console.warn('Alerts load failed', e);
+  }
+}
+
+function renderAlertOverlay() {
+  // Build a GeoJSON FeatureCollection of alert polygons
+  const features = STATE.alerts
+    .filter(a => a.geometry && (a.geometry.type === 'Polygon' || a.geometry.type === 'MultiPolygon'))
+    .map(a => ({
+      type: 'Feature',
+      geometry: a.geometry,
+      properties: {
+        id: a.id,
+        event: a.event,
+        severity: a.severity || 'Unknown',
+      },
+    }));
+  const fc = { type: 'FeatureCollection', features };
+  // Add or update source
+  if (STATE.map.getSource('alerts-source')) {
+    STATE.map.getSource('alerts-source').setData(fc);
+  } else {
+    STATE.map.addSource('alerts-source', { type: 'geojson', data: fc });
+    STATE.map.addLayer({
+      id: 'alerts-fill',
+      type: 'fill',
+      source: 'alerts-source',
+      paint: {
+        'fill-color': [
+          'match', ['get', 'severity'],
+          'Extreme', '#f43f5e',
+          'Severe', '#fb923c',
+          'Moderate', '#fbbf24',
+          'Minor', '#38bdf8',
+          '#9ba2b0',
+        ],
+        'fill-opacity': 0.18,
+      },
+    });
+    STATE.map.addLayer({
+      id: 'alerts-stroke',
+      type: 'line',
+      source: 'alerts-source',
+      paint: {
+        'line-color': [
+          'match', ['get', 'severity'],
+          'Extreme', '#f43f5e',
+          'Severe', '#fb923c',
+          'Moderate', '#fbbf24',
+          'Minor', '#38bdf8',
+          '#9ba2b0',
+        ],
+        'line-width': 2,
+      },
+    });
+    // Click on polygon → show alert detail
+    STATE.map.on('click', 'alerts-fill', (e) => {
+      const f = e.features?.[0];
+      if (!f) return;
+      const alert = STATE.alerts.find(a => a.id === f.properties.id);
+      if (alert) showAlertDetail(alert);
+      e.originalEvent.preventDefault();
+    });
+    STATE.map.on('mouseenter', 'alerts-fill', () => STATE.map.getCanvas().style.cursor = 'pointer');
+    STATE.map.on('mouseleave', 'alerts-fill', () => STATE.map.getCanvas().style.cursor = '');
+  }
+}
+
+function renderAlertBanner() {
+  const banner = document.getElementById('alertBanner');
+  if (!STATE.alerts.length) {
+    banner.classList.remove('show');
+    return;
+  }
+  const top = STATE.alerts[0];
+  const cls = top.severity === 'Extreme' ? '' :
+              top.severity === 'Severe' ? 'warn' :
+              top.severity === 'Moderate' ? 'watch' : 'advisory';
+  banner.className = `alert-banner show ${cls}`;
+  document.getElementById('alertCount').textContent = STATE.alerts.length;
+  const label = top.event + (STATE.alerts.length > 1 ? ` + ${STATE.alerts.length - 1} more` : '');
+  document.getElementById('alertLabel').textContent = label;
+}
+
+function showAlertDetail(alert) {
+  document.getElementById('adTitle').textContent = alert.event;
+  document.getElementById('adSub').textContent = `${alert.severity} · ${alert.urgency} · ${alert.areaDesc || ''}`;
+  const expires = alert.expires ? new Date(alert.expires) : null;
+  const expiresStr = expires ? expires.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Unknown';
+  let body = '';
+  body += `Expires: ${expiresStr}\n\n`;
+  if (alert.headline) body += `${alert.headline}\n\n`;
+  if (alert.description) body += `${alert.description}\n\n`;
+  if (alert.instruction) body += `INSTRUCTIONS:\n${alert.instruction}\n\n`;
+  if (alert.senderName) body += `Issued by: ${alert.senderName}`;
+  document.getElementById('adBody').textContent = body;
+  document.getElementById('alertDetailModal').classList.add('show');
+}
+function closeAlertDetail() {
+  document.getElementById('alertDetailModal').classList.remove('show');
+}
+
+// ============================================================
+// CLICK-TO-FORECAST
+// ============================================================
+function setupClickHandler() {
+  STATE.map.on('click', (e) => {
+    if (e.originalEvent.defaultPrevented) return;
+    fetchForecast(e.lngLat.lat, e.lngLat.lng);
+  });
+}
+
+async function fetchForecast(lat, lon, label) {
+  openPanel();
+  document.getElementById('panelLoc').textContent = label || `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
+  document.getElementById('panelTitle').textContent = '—';
+  document.getElementById('panelBody').innerHTML = '<div class="loading">Loading forecast...</div>';
+  try {
+    const res = await fetch(`/api/forecast?lat=${lat}&lon=${lon}`);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Forecast failed');
+    }
+    const data = await res.json();
+    STATE.currentLocation = { lat, lon, label: label || data.location?.city };
+    renderForecastPanel(data);
+  } catch (e) {
+    document.getElementById('panelBody').innerHTML = `<div class="empty">Forecast unavailable: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderForecastPanel(data) {
+  const { location, current, hourly, daily } = data;
+  document.getElementById('panelLoc').textContent = location?.city
+    ? `${location.city}, ${location.state}`
+    : `${location?.lat.toFixed(3)}, ${location?.lon.toFixed(3)}`;
+  document.getElementById('panelTitle').textContent = current?.conditions || daily?.[0]?.shortForecast || 'Forecast';
+
+  let html = '';
+
+  // CURRENT
+  if (current) {
+    html += `<div class="panel-section">
+      <h3><span class="accent-bar"></span>Current</h3>
+      <div class="current-card">
+        <div class="big">
+          <div class="temp">${current.temp != null ? Math.round(current.temp) + '°' : '—'}</div>
+          <div class="conditions">${escapeHtml(current.conditions || '')}</div>
+        </div>
+        <div class="stat"><span class="k">Feels like</span> <span class="v">${current.temp != null ? Math.round(current.temp) + '°' : '—'}</span></div>
+        <div class="stat"><span class="k">Humidity</span> <span class="v">${current.humidity != null ? Math.round(current.humidity) + '%' : '—'}</span></div>
+        <div class="stat"><span class="k">Wind</span> <span class="v">${current.windSpeed != null ? Math.round(current.windSpeed) + ' mph' : '—'}${current.windGust ? ` (g ${Math.round(current.windGust)})` : ''}</span></div>
+        <div class="stat"><span class="k">Dewpoint</span> <span class="v">${current.dewpoint != null ? Math.round(current.dewpoint) + '°' : '—'}</span></div>
+        <div class="stat"><span class="k">Pressure</span> <span class="v">${current.pressureMb != null ? Math.round(current.pressureMb) + ' mb' : '—'}</span></div>
+        <div class="stat"><span class="k">Visibility</span> <span class="v">${current.visibility != null ? current.visibility + ' mi' : '—'}</span></div>
+      </div>
+    </div>`;
+  }
+
+  // ACTIVE ALERTS FOR THIS POINT
+  const pointAlerts = STATE.alerts.filter(a => {
+    // Simple inclusion: if the point alert API returned ones for this lat/lon, they'd be in STATE.alerts only after reloading.
+    // For now show all current alerts within the side panel under their own section.
+    return true;
+  });
+  if (STATE.alerts.length) {
+    html += `<div class="panel-section">
+      <h3><span class="accent-bar" style="background:var(--severe);"></span>Active Alerts (${STATE.alerts.length})</h3>
+      ${STATE.alerts.map(a => renderAlertItem(a)).join('')}
+    </div>`;
+  }
+
+  // HOURLY
+  if (hourly && hourly.length) {
+    html += `<div class="panel-section" style="padding-right: 0;">
+      <h3 style="margin-bottom: 10px;"><span class="accent-bar"></span>Next 24 Hours</h3>
+    </div>
+    <div class="hourly-scroll">
+      ${hourly.slice(0, 24).map(p => `
+        <div class="hourly-cell">
+          <div class="h">${new Date(p.startTime).toLocaleTimeString('en-US', { hour: 'numeric' })}</div>
+          <div class="t">${p.temperature}°</div>
+          <div class="p">${p.probabilityOfPrecipitation?.value || 0}%</div>
+        </div>
+      `).join('')}
+    </div>`;
+  }
+
+  // DAILY
+  if (daily && daily.length) {
+    html += `<div class="panel-section">
+      <h3><span class="accent-bar"></span>7-Day Forecast</h3>`;
+    // Pair day + night periods
+    const pairs = [];
+    for (let i = 0; i < daily.length; i++) {
+      const p = daily[i];
+      if (p.isDaytime) {
+        const next = daily[i + 1];
+        const lowTemp = (next && !next.isDaytime) ? next.temperature : null;
+        pairs.push({ day: p.name, short: p.shortForecast, hi: p.temperature, lo: lowTemp });
+      } else if (i === 0) {
+        // Starts with night — show as Tonight
+        pairs.push({ day: p.name, short: p.shortForecast, hi: null, lo: p.temperature });
+      }
+    }
+    html += pairs.map(p => `
+      <div class="daily-row">
+        <div class="day">${escapeHtml(p.day)}</div>
+        <div class="short">${escapeHtml(p.short)}</div>
+        <div class="temps">${p.hi != null ? p.hi + '°' : '—'} <span class="lo">${p.lo != null ? p.lo + '°' : ''}</span></div>
+      </div>
+    `).join('');
+    html += `</div>`;
+  }
+
+  document.getElementById('panelBody').innerHTML = html;
+}
+
+function renderAlertItem(a) {
+  const cls = (a.severity || '').toLowerCase();
+  const expires = a.expires ? new Date(a.expires) : null;
+  const expiresStr = expires
+    ? `Expires ${expires.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`
+    : '';
+  return `<div class="alert-item ${cls}" onclick='showAlertDetailById(${JSON.stringify(a.id)})'>
+    <div class="ev">${escapeHtml(a.event || 'Alert')}</div>
+    <div class="area">${escapeHtml(a.areaDesc || '')}</div>
+    <div class="when">${escapeHtml(expiresStr)}</div>
+  </div>`;
+}
+
+function showAlertDetailById(id) {
+  const a = STATE.alerts.find(x => x.id === id);
+  if (a) showAlertDetail(a);
+}
+
+// ============================================================
+// PANEL
+// ============================================================
+function openPanel() { document.getElementById('panel').classList.add('show'); }
+function closePanel() { document.getElementById('panel').classList.remove('show'); }
+function switchPanelTab(t) { /* placeholder if multi-tab added */ }
+
+// ============================================================
+// LAYER TOGGLES
+// ============================================================
+function toggleLayer(name) {
+  const btn = document.querySelector(`.layer-btn[data-layer="${name}"]`);
+  const isOn = btn.classList.contains('on');
+  const newOn = !isOn;
+  btn.classList.toggle('on', newOn);
+
+  if (name === 'radar') {
+    if (STATE.map.getLayer('radar-layer')) {
+      STATE.map.setLayoutProperty('radar-layer', 'visibility', newOn ? 'visible' : 'none');
+    }
+  } else if (name === 'alerts') {
+    ['alerts-fill', 'alerts-stroke'].forEach(id => {
+      if (STATE.map.getLayer(id)) STATE.map.setLayoutProperty(id, 'visibility', newOn ? 'visible' : 'none');
+    });
+  } else if (name === 'dark') {
+    STATE.mapStyle = newOn ? 'dark' : 'light';
+    const c = STATE.map.getCenter();
+    const z = STATE.map.getZoom();
+    STATE.map.setStyle(MAP_STYLES[STATE.mapStyle]);
+    STATE.map.once('styledata', () => {
+      // Re-add radar + alerts after style change
+      renderRadarFrame();
+      renderAlertOverlay();
+    });
+  }
+}
+
+// ============================================================
+// SEARCH
+// ============================================================
+let searchTimeout = null;
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  clearTimeout(searchTimeout);
+  const q = e.target.value.trim();
+  if (q.length < 2) {
+    document.getElementById('searchResults').classList.remove('show');
+    return;
+  }
+  searchTimeout = setTimeout(() => doSearch(q), 350);
+});
+document.getElementById('searchInput').addEventListener('blur', () => {
+  setTimeout(() => document.getElementById('searchResults').classList.remove('show'), 200);
+});
+document.getElementById('searchInput').addEventListener('focus', (e) => {
+  if (e.target.value.trim().length >= 2 && document.getElementById('searchResults').innerHTML.trim()) {
+    document.getElementById('searchResults').classList.add('show');
+  }
+});
+
+async function doSearch(q) {
+  // Detect coordinates "lat,lon" pattern
+  const coordsMatch = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,\s]+\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (coordsMatch) {
+    const lat = parseFloat(coordsMatch[1]);
+    const lon = parseFloat(coordsMatch[2]);
+    if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+      document.getElementById('searchResults').innerHTML = `
+        <div class="search-result-item" onclick="selectSearchResult(${lat}, ${lon}, '${lat.toFixed(3)}, ${lon.toFixed(3)}')">
+          <strong>${lat.toFixed(3)}, ${lon.toFixed(3)}</strong>
+          <div class="sub">Coordinates</div>
+        </div>`;
+      document.getElementById('searchResults').classList.add('show');
+      return;
+    }
+  }
+  try {
+    const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    const results = data.results || [];
+    if (!results.length) {
+      document.getElementById('searchResults').innerHTML = `<div class="search-result-item" style="cursor:default;color:var(--muted);">No results</div>`;
+    } else {
+      document.getElementById('searchResults').innerHTML = results.map(r => `
+        <div class="search-result-item" onclick='selectSearchResult(${r.lat}, ${r.lon}, ${JSON.stringify(r.shortName || r.name)})'>
+          <strong>${escapeHtml(r.shortName || r.name.split(',')[0])}</strong>
+          <div class="sub">${escapeHtml(r.name)}</div>
+        </div>
+      `).join('');
+    }
+    document.getElementById('searchResults').classList.add('show');
+  } catch (e) {
+    console.warn('Search failed', e);
+  }
+}
+
+function selectSearchResult(lat, lon, label) {
+  document.getElementById('searchResults').classList.remove('show');
+  document.getElementById('searchInput').value = label;
+  STATE.map.flyTo({ center: [lon, lat], zoom: 9, duration: 1000 });
+  setTimeout(() => fetchForecast(lat, lon, label), 800);
+}
+
+// ============================================================
+// GEOLOCATION
+// ============================================================
+document.getElementById('locateBtn').addEventListener('click', () => {
+  if (!navigator.geolocation) return alert('Geolocation not supported by your browser');
+  document.getElementById('locateBtn').textContent = '⏳';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const { latitude, longitude } = pos.coords;
+      STATE.map.flyTo({ center: [longitude, latitude], zoom: 9, duration: 1000 });
+      setTimeout(() => fetchForecast(latitude, longitude, 'My location'), 800);
+      document.getElementById('locateBtn').textContent = '⊙';
+    },
+    (err) => {
+      alert('Could not get location: ' + err.message);
+      document.getElementById('locateBtn').textContent = '⊙';
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+});
+
+// ============================================================
+// HELPERS
+// ============================================================
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ============================================================
+// INIT
+// ============================================================
+initMap();
+
+// Auto-refresh radar every 5 min, alerts every 2 min
+setInterval(loadRadarFrames, 5 * 60 * 1000);
+setInterval(loadAlertsForMapView, 2 * 60 * 1000);
+</script>
+
+</body>
+</html>
