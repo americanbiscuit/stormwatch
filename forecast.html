@@ -276,10 +276,16 @@ function renderDashboard(loc, forecast, alerts) {
     <div class="hero-temp-row">
       <div class="hero-temp">${tempNow}°</div>
       <div class="hero-cond">${escapeHtml(cond)}
+        ${current?.feelsLike != null && current?.temp != null && Math.abs(current.feelsLike - current.temp) >= 1 ? `<span class="hi-lo">Feels like ${Math.round(current.feelsLike)}°</span>` : ''}
         ${hi != null || lo != null ? `<span class="hi-lo">H: ${hi != null ? hi + '°' : '—'} · L: ${lo != null ? lo + '°' : '—'}</span>` : ''}
       </div>
     </div>
     ${current ? `<div class="stat-grid">
+      <div class="stat-tile">
+        <div class="label">Feels like</div>
+        <div class="value">${current.feelsLike != null ? Math.round(current.feelsLike) + '°' : '—'}</div>
+        ${current.feelsLike != null && current.temp != null && Math.abs(current.feelsLike - current.temp) >= 1 ? `<div class="sub">${current.feelsLike > current.temp ? 'Hotter' : 'Colder'} than actual ${Math.round(current.temp)}°</div>` : ''}
+      </div>
       <div class="stat-tile">
         <div class="label">Humidity</div>
         <div class="value">${current.humidity != null ? Math.round(current.humidity) + '%' : '—'}</div>

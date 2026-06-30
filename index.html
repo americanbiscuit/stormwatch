@@ -1385,12 +1385,14 @@ function renderForecastPane(data) {
   document.getElementById('panelTitle').textContent = current?.conditions || daily?.[0]?.shortForecast || 'Forecast';
   let html = '';
   if (current) {
+    const feelsDiff = current.feelsLike != null && current.temp != null && Math.abs(current.feelsLike - current.temp) >= 1;
     html += `<div class="panel-section"><h3><span class="accent-bar"></span>Current</h3>
       <div class="current-card">
         <div class="big">
           <div class="temp">${current.temp != null ? Math.round(current.temp) + '°' : '—'}</div>
-          <div class="conditions">${escapeHtml(current.conditions || '')}</div>
+          <div class="conditions">${escapeHtml(current.conditions || '')}${feelsDiff ? `<br/><span style="font-size:12px;color:var(--text-2)">Feels like ${Math.round(current.feelsLike)}°</span>` : ''}</div>
         </div>
+        <div class="stat"><span class="k">Feels like</span> <span class="v">${current.feelsLike != null ? Math.round(current.feelsLike) + '°' : '—'}</span></div>
         <div class="stat"><span class="k">Humidity</span> <span class="v">${current.humidity != null ? Math.round(current.humidity) + '%' : '—'}</span></div>
         <div class="stat"><span class="k">Wind</span> <span class="v">${current.windSpeed != null ? Math.round(current.windSpeed) + ' mph' : '—'}${current.windGust ? ` (g ${Math.round(current.windGust)})` : ''}</span></div>
         <div class="stat"><span class="k">Dewpoint</span> <span class="v">${current.dewpoint != null ? Math.round(current.dewpoint) + '°' : '—'}</span></div>

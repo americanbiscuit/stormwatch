@@ -146,9 +146,11 @@ async function hydrate(l) {
       const tempEl = condBox.querySelector('.temp');
       const txtEl = condBox.querySelector('.conditions-text');
       const temp = d.current?.temp != null ? Math.round(d.current.temp) : (d.daily?.[0]?.temperature ?? '—');
+      const feels = d.current?.feelsLike != null && d.current?.temp != null && Math.abs(d.current.feelsLike - d.current.temp) >= 1
+        ? Math.round(d.current.feelsLike) : null;
       const cond = d.current?.conditions || d.daily?.[0]?.shortForecast || '';
       tempEl.textContent = temp + '°';
-      txtEl.textContent = cond;
+      txtEl.innerHTML = escapeHtml(cond) + (feels != null ? ` <span style="color:var(--muted);font-size:11px;">· feels ${feels}°</span>` : '');
     }
   } catch {}
   try {
