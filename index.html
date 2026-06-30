@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0" />
 <meta name="theme-color" content="#0d1117" />
-<title>Stormwatch — Live Weather Radar</title>
+<title>Stormwatch — Live Weather Radar &amp; Forecasts</title>
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
 <style>
   :root {
@@ -15,7 +15,7 @@
     --text: #e6edf3;
     --text-2: #9ba2b0;
     --muted: #6e7681;
-    --accent: #38bdf8;             /* sky blue */
+    --accent: #38bdf8;
     --accent-soft: rgba(56, 189, 248, 0.15);
     --green: #4ade80;
     --warn: #fbbf24;
@@ -45,6 +45,7 @@
     gap: 8px;
     z-index: 10;
     pointer-events: none;
+    flex-wrap: nowrap;
   }
   .topbar > * { pointer-events: auto; }
   .logo-chip {
@@ -62,13 +63,31 @@
     align-items: center;
     gap: 8px;
     white-space: nowrap;
+    text-decoration: none;
   }
   .logo-chip .bolt { color: var(--accent); font-size: 17px; }
-  .search-wrap {
-    flex: 1;
-    position: relative;
-    min-width: 0;
+  .topbar .nav-chip {
+    background: rgba(13, 17, 23, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 4px;
+    display: flex;
+    gap: 2px;
   }
+  .topbar .nav-chip a {
+    padding: 5px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-2);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .topbar .nav-chip a.active { background: var(--accent-soft); color: var(--accent); }
+  .topbar .nav-chip a:hover:not(.active) { color: var(--text); }
+  .search-wrap { flex: 1; position: relative; min-width: 0; }
   .search-input {
     width: 100%;
     background: rgba(13, 17, 23, 0.85);
@@ -114,7 +133,6 @@
   .search-result-item:last-child { border-bottom: none; }
   .search-result-item:hover { background: var(--surface-2); color: var(--accent); }
   .search-result-item .sub { color: var(--muted); font-size: 11px; margin-top: 2px; }
-
   .icon-chip {
     background: rgba(13, 17, 23, 0.85);
     backdrop-filter: blur(12px);
@@ -130,6 +148,7 @@
     justify-content: center;
     font-size: 17px;
     transition: all 0.15s;
+    flex-shrink: 0;
   }
   .icon-chip:hover { color: var(--accent); border-color: var(--accent); }
   .icon-chip:active { transform: scale(0.95); }
@@ -141,7 +160,6 @@
     left: 12px;
     right: 12px;
     z-index: 9;
-    display: none;
     background: var(--extreme);
     color: white;
     padding: 10px 14px;
@@ -151,7 +169,7 @@
     cursor: pointer;
     box-shadow: 0 4px 16px rgba(244, 63, 94, 0.4);
     animation: pulse 2.5s ease-in-out infinite;
-    display: flex;
+    display: none;
     align-items: center;
     gap: 10px;
   }
@@ -170,6 +188,36 @@
   .alert-banner .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .alert-banner .chev { font-weight: 800; font-size: 16px; }
 
+  /* ============ OUTLOOK CHIP ============ */
+  .outlook-chip {
+    position: absolute;
+    top: calc(64px + var(--safe-top));
+    left: 12px;
+    z-index: 8;
+    background: rgba(13, 17, 23, 0.9);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    padding: 7px 12px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .outlook-chip.show { display: inline-flex; }
+  .outlook-chip .level {
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 11px;
+    letter-spacing: 0.4px;
+  }
+
   /* ============ LAYER CONTROLS ============ */
   .layers {
     position: absolute;
@@ -184,14 +232,14 @@
     z-index: 8;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    max-width: 180px;
+    gap: 4px;
+    max-width: 200px;
   }
   .layer-btn {
     background: transparent;
     border: 1px solid transparent;
     color: var(--text-2);
-    padding: 8px 12px;
+    padding: 7px 10px;
     border-radius: 8px;
     font-size: 12px;
     font-weight: 700;
@@ -202,14 +250,29 @@
     gap: 8px;
     font-family: inherit;
     transition: all 0.15s;
+    width: 100%;
   }
   .layer-btn:hover { background: var(--surface-2); color: var(--text); }
   .layer-btn.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
   .layer-btn .dot {
     width: 8px; height: 8px; border-radius: 50%;
     background: var(--muted);
+    flex-shrink: 0;
   }
   .layer-btn.on .dot { background: var(--accent); }
+  .layer-btn .name { flex: 1; }
+  .layer-btn .info {
+    color: var(--muted);
+    font-size: 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    width: 16px; height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: help;
+  }
 
   /* ============ TIME SLIDER ============ */
   .time-control {
@@ -217,7 +280,7 @@
     bottom: calc(14px + var(--safe-bottom));
     left: 12px;
     right: 12px;
-    background: rgba(13, 17, 23, 0.85);
+    background: rgba(13, 17, 23, 0.9);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--border);
@@ -244,21 +307,16 @@
     justify-content: center;
     flex-shrink: 0;
   }
-  .play-btn:hover { transform: scale(1.05); }
-  .time-info {
-    flex: 1;
-    min-width: 0;
-  }
-  .time-label {
-    font-size: 12px;
-    color: var(--text-2);
-    font-weight: 600;
-  }
+  .time-info { flex: 1; min-width: 0; }
+  .time-label { font-size: 12px; color: var(--text-2); font-weight: 600; }
   .time-value {
     font-size: 14px;
     color: var(--text);
     font-weight: 800;
     letter-spacing: -0.2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .time-slider {
     flex: 2;
@@ -270,8 +328,7 @@
     outline: none;
   }
   .time-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
+    -webkit-appearance: none; appearance: none;
     width: 18px; height: 18px;
     border-radius: 50%;
     background: var(--accent);
@@ -297,14 +354,76 @@
   .frame-type.past { background: var(--accent-soft); color: var(--accent); }
   .frame-type.future { background: rgba(74, 222, 128, 0.15); color: var(--green); }
 
-  /* ============ SIDE PANEL (forecast + alerts) ============ */
+  /* ============ LEGEND ============ */
+  .legend-toggle {
+    position: absolute;
+    bottom: calc(80px + var(--safe-bottom));
+    left: 12px;
+    z-index: 7;
+    background: rgba(13, 17, 23, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .legend-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  .legend {
+    position: absolute;
+    bottom: calc(116px + var(--safe-bottom));
+    left: 12px;
+    z-index: 7;
+    background: rgba(13, 17, 23, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 11px;
+    max-width: 230px;
+    display: none;
+  }
+  .legend.show { display: block; }
+  .legend h4 {
+    margin: 0 0 6px;
+    font-size: 10px;
+    color: var(--text-2);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 800;
+  }
+  .legend-group { margin-bottom: 10px; }
+  .legend-group:last-child { margin-bottom: 0; }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 3px 0;
+  }
+  .legend-swatch {
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1px solid rgba(0,0,0,0.3);
+  }
+  .legend-swatch.circle { border-radius: 50%; }
+  .legend-row .name { font-weight: 700; color: var(--text); }
+  .legend-row .desc { color: var(--text-2); font-size: 10px; }
+
+  /* ============ SIDE PANEL ============ */
   .panel {
     position: absolute;
     top: 0;
     right: 0;
     bottom: 0;
     width: 100%;
-    max-width: 420px;
+    max-width: 440px;
     background: var(--bg);
     border-left: 1px solid var(--border);
     z-index: 20;
@@ -316,13 +435,18 @@
   }
   .panel.show { transform: translateX(0); }
   .panel-head {
-    padding: calc(16px + var(--safe-top)) 18px 14px;
+    padding: calc(16px + var(--safe-top)) 18px 0;
     border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .panel-head-top {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
     gap: 10px;
-    flex-shrink: 0;
+    margin-bottom: 14px;
   }
   .panel-head-info { flex: 1; min-width: 0; }
   .panel-loc {
@@ -350,8 +474,40 @@
     font-weight: 700;
     flex-shrink: 0;
   }
-  .panel-body { overflow-y: auto; flex: 1; padding-bottom: calc(20px + var(--safe-bottom)); }
-
+  .panel-tabs {
+    display: flex;
+    gap: 4px;
+  }
+  .panel-tab {
+    padding: 8px 14px 10px;
+    background: transparent;
+    border: none;
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-family: inherit;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .panel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .panel-tab .badge {
+    background: var(--extreme);
+    color: white;
+    border-radius: 999px;
+    padding: 1px 6px;
+    font-size: 9px;
+    margin-left: 4px;
+    font-weight: 800;
+  }
+  .panel-body {
+    overflow-y: auto;
+    flex: 1;
+    padding-bottom: calc(20px + var(--safe-bottom));
+  }
+  .panel-pane { display: none; }
+  .panel-pane.active { display: block; }
   .panel-section { padding: 16px 18px; border-bottom: 1px solid var(--border); }
   .panel-section h3 {
     margin: 0 0 12px;
@@ -369,8 +525,6 @@
     vertical-align: middle;
     border-radius: 1px;
   }
-
-  /* Current conditions card */
   .current-card {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -401,8 +555,6 @@
   }
   .stat .k { color: var(--text-2); }
   .stat .v { color: var(--text); font-weight: 700; }
-
-  /* Hourly horizontal scroll */
   .hourly-scroll {
     display: flex;
     gap: 8px;
@@ -423,8 +575,6 @@
   .hourly-cell .h { font-size: 11px; color: var(--text-2); font-weight: 700; }
   .hourly-cell .t { font-size: 16px; font-weight: 800; margin: 4px 0; }
   .hourly-cell .p { font-size: 10px; color: var(--accent); font-weight: 700; }
-
-  /* Daily list */
   .daily-row {
     display: grid;
     grid-template-columns: 80px 1fr auto;
@@ -438,8 +588,6 @@
   .daily-row .short { color: var(--text-2); font-size: 12px; }
   .daily-row .temps { font-weight: 800; font-size: 14px; white-space: nowrap; }
   .daily-row .temps .lo { color: var(--text-2); font-weight: 600; }
-
-  /* Alert items */
   .alert-item {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -457,6 +605,31 @@
   .alert-item .area { font-size: 11px; color: var(--text-2); margin-bottom: 6px; }
   .alert-item .when { font-size: 11px; color: var(--muted); }
 
+  /* AFD text */
+  .afd-meta {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .afd-meta b { color: var(--text); font-weight: 800; }
+  .afd-text {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text-2);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  /* Detail modal */
   .alert-detail-modal {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.7);
@@ -492,19 +665,8 @@
   .alert-detail-body strong { color: var(--text); }
 
   /* Empty / loading */
-  .loading {
-    padding: 40px 20px;
-    text-align: center;
-    color: var(--text-2);
-    font-size: 13px;
-  }
-  .empty {
-    padding: 30px 20px;
-    text-align: center;
-    color: var(--text-2);
-    font-size: 13px;
-    font-style: italic;
-  }
+  .loading { padding: 40px 20px; text-align: center; color: var(--text-2); font-size: 13px; }
+  .empty { padding: 30px 20px; text-align: center; color: var(--text-2); font-size: 13px; font-style: italic; }
 
   /* Attribution chip */
   .attrib {
@@ -522,18 +684,33 @@
   .attrib a { color: var(--text-2); text-decoration: none; }
   .attrib a:hover { color: var(--accent); }
 
-  /* Hide MapLibre default attribution since we provide our own */
   .maplibregl-ctrl-attrib { display: none !important; }
   .maplibregl-ctrl-bottom-right { display: none !important; }
 
-  /* Mobile tweaks */
-  @media (max-width: 600px) {
-    .logo-chip { padding: 8px 10px; font-size: 13px; }
-    .logo-chip .bolt { font-size: 14px; }
+  /* MapLibre popup theming */
+  .maplibregl-popup-content {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    padding: 12px 14px !important;
+    font-family: inherit !important;
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+  }
+  .maplibregl-popup-content strong { color: var(--text); font-weight: 800; }
+  .maplibregl-popup-tip { border-top-color: var(--surface) !important; border-bottom-color: var(--surface) !important; }
+  .maplibregl-popup-close-button { color: var(--text-2) !important; font-size: 18px !important; padding: 2px 6px !important; }
+
+  @media (max-width: 640px) {
+    .logo-chip { padding: 6px 9px; font-size: 12px; }
+    .logo-chip .bolt { font-size: 13px; }
+    .topbar .nav-chip a { padding: 4px 8px; font-size: 11px; }
+    .layers { top: calc(112px + var(--safe-top)); max-width: 160px; padding: 6px; }
+    .layer-btn { padding: 6px 8px; font-size: 11px; }
+    .outlook-chip { top: calc(112px + var(--safe-top)); left: 12px; right: auto; }
     .time-control { padding: 8px 12px; gap: 8px; }
-    .time-value { font-size: 13px; }
-    .layers { top: calc(112px + var(--safe-top)); max-width: 140px; }
-    .layer-btn { padding: 6px 10px; font-size: 11px; }
+    .time-value { font-size: 12px; }
   }
 </style>
 </head>
@@ -543,36 +720,57 @@
 
 <!-- Top bar -->
 <div class="topbar">
-  <div class="logo-chip"><span class="bolt">⚡</span> Stormwatch</div>
+  <a href="/" class="logo-chip"><span class="bolt">⚡</span> Stormwatch</a>
+  <div class="nav-chip">
+    <a href="/" class="active">Radar</a>
+    <a href="/saved.html">Saved</a>
+    <a href="/alerts.html">Alerts</a>
+    <a href="/settings.html">Settings</a>
+  </div>
   <div class="search-wrap">
     <span class="search-icon">⌕</span>
-    <input class="search-input" id="searchInput" type="text" placeholder="Search city, zip, or coordinates..." autocomplete="off" />
+    <input class="search-input" id="searchInput" type="text" placeholder="Search city, zip, or coords..." autocomplete="off" />
     <div class="search-results" id="searchResults"></div>
   </div>
   <button class="icon-chip" id="locateBtn" title="My location">⊙</button>
 </div>
 
-<!-- Alert banner (appears when alerts exist near map center) -->
-<div class="alert-banner" id="alertBanner" onclick="openPanel(); switchPanelTab('alerts');">
+<!-- Alert banner -->
+<div class="alert-banner" id="alertBanner" onclick="openPanel('alerts')">
   <span class="count" id="alertCount">0</span>
   <span class="label" id="alertLabel">Alerts</span>
   <span class="chev">›</span>
 </div>
 
+<!-- Outlook chip (max severe risk currently rendered) -->
+<div class="outlook-chip" id="outlookChip" onclick="openOutlookInfo()">
+  <span>Today's max risk:</span>
+  <span class="level" id="outlookLevel">—</span>
+</div>
+
 <!-- Layer toggles -->
 <div class="layers" id="layers">
   <button class="layer-btn on" data-layer="radar" onclick="toggleLayer('radar')">
-    <span class="dot"></span> Radar
+    <span class="dot"></span><span class="name">Radar</span>
   </button>
   <button class="layer-btn on" data-layer="alerts" onclick="toggleLayer('alerts')">
-    <span class="dot"></span> Alerts
+    <span class="dot"></span><span class="name">Alerts</span>
+  </button>
+  <button class="layer-btn" data-layer="outlook" onclick="toggleLayer('outlook')">
+    <span class="dot"></span><span class="name">SPC Outlook</span>
+  </button>
+  <button class="layer-btn" data-layer="mcd" onclick="toggleLayer('mcd')">
+    <span class="dot"></span><span class="name">Mesoscale Disc.</span>
+  </button>
+  <button class="layer-btn" data-layer="reports" onclick="toggleLayer('reports')">
+    <span class="dot"></span><span class="name">Storm Reports</span>
   </button>
   <button class="layer-btn" data-layer="dark" onclick="toggleLayer('dark')">
-    <span class="dot"></span> Dark Map
+    <span class="dot"></span><span class="name">Dark Map</span>
   </button>
 </div>
 
-<!-- Time slider (for radar playback) -->
+<!-- Time slider for radar playback -->
 <div class="time-control" id="timeControl">
   <button class="play-btn" id="playBtn" onclick="togglePlayback()">▶</button>
   <div class="time-info">
@@ -583,17 +781,55 @@
   <input type="range" class="time-slider" id="timeSlider" min="0" max="0" value="0" oninput="seekFrame(this.value)" />
 </div>
 
-<!-- Forecast/Alerts panel -->
+<!-- Legend -->
+<button class="legend-toggle" id="legendToggle" onclick="toggleLegend()">Legend</button>
+<div class="legend" id="legend">
+  <div class="legend-group">
+    <h4>Radar Reflectivity</h4>
+    <div class="legend-row"><div class="legend-swatch" style="background:#3a90cf"></div><span class="name">Light</span><span class="desc">drizzle</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#1be000"></div><span class="name">Moderate</span><span class="desc">steady rain</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#fbed00"></div><span class="name">Heavy</span><span class="desc">downpour</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#ff6900"></div><span class="name">Intense</span><span class="desc">hail likely</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#d018b9"></div><span class="name">Extreme</span><span class="desc">large hail</span></div>
+  </div>
+  <div class="legend-group">
+    <h4>SPC Outlook</h4>
+    <div class="legend-row"><div class="legend-swatch" style="background:#C1E9C1; border-color:#55BB55"></div><span class="name">TSTM</span><span class="desc">general thunder</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#66A366"></div><span class="name">MRGL</span><span class="desc">1/5 marginal</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#FFE066"></div><span class="name">SLGT</span><span class="desc">2/5 slight</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#FFA366"></div><span class="name">ENH</span><span class="desc">3/5 enhanced</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#FF6666"></div><span class="name">MDT</span><span class="desc">4/5 moderate</span></div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#FF66B2"></div><span class="name">HIGH</span><span class="desc">5/5 high</span></div>
+  </div>
+  <div class="legend-group">
+    <h4>Storm Reports (24hr)</h4>
+    <div class="legend-row"><div class="legend-swatch circle" style="background:#f43f5e"></div><span class="name">Tornado</span></div>
+    <div class="legend-row"><div class="legend-swatch circle" style="background:#4ade80"></div><span class="name">Hail</span></div>
+    <div class="legend-row"><div class="legend-swatch circle" style="background:#38bdf8"></div><span class="name">Wind damage / gusts</span></div>
+    <div class="legend-row"><div class="legend-swatch circle" style="background:#1e40af"></div><span class="name">Flooding</span></div>
+  </div>
+</div>
+
+<!-- Side panel -->
 <div class="panel" id="panel">
   <div class="panel-head">
-    <div class="panel-head-info">
-      <div class="panel-loc" id="panelLoc">Loading...</div>
-      <div class="panel-title" id="panelTitle">—</div>
+    <div class="panel-head-top">
+      <div class="panel-head-info">
+        <div class="panel-loc" id="panelLoc">Loading...</div>
+        <div class="panel-title" id="panelTitle">—</div>
+      </div>
+      <button class="panel-close" onclick="closePanel()">✕</button>
     </div>
-    <button class="panel-close" onclick="closePanel()">✕</button>
+    <div class="panel-tabs">
+      <button class="panel-tab active" data-pane="forecast" onclick="switchPane('forecast')">Forecast</button>
+      <button class="panel-tab" data-pane="discussion" onclick="switchPane('discussion')">Discussion</button>
+      <button class="panel-tab" data-pane="alerts" onclick="switchPane('alerts')">Alerts <span class="badge" id="alertsBadge" style="display:none">0</span></button>
+    </div>
   </div>
-  <div class="panel-body" id="panelBody">
-    <div class="loading">Loading forecast...</div>
+  <div class="panel-body">
+    <div class="panel-pane active" id="paneForecast"><div class="loading">Click anywhere on the map for a forecast.</div></div>
+    <div class="panel-pane" id="paneDiscussion"><div class="empty">Pick a point on the map to load your NWS office's forecast discussion.</div></div>
+    <div class="panel-pane" id="paneAlerts"><div class="empty">No active alerts in this area.</div></div>
   </div>
 </div>
 
@@ -614,47 +850,115 @@
 <!-- Attribution -->
 <div class="attrib">
   Radar <a href="https://www.rainviewer.com" target="_blank">RainViewer</a> ·
-  Forecast <a href="https://www.weather.gov" target="_blank">NWS</a> ·
-  Map <a href="https://carto.com/attributions" target="_blank">CARTO</a> /
-  <a href="https://www.openstreetmap.org/copyright" target="_blank">OSM</a>
+  Forecast/alerts <a href="https://www.weather.gov" target="_blank">NWS</a> ·
+  Outlooks <a href="https://www.spc.noaa.gov" target="_blank">SPC</a> ·
+  LSRs <a href="https://mesonet.agron.iastate.edu" target="_blank">IEM</a> ·
+  Map <a href="https://carto.com/attributions" target="_blank">CARTO</a>/<a href="https://www.openstreetmap.org/copyright" target="_blank">OSM</a>
 </div>
 
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
-// ============================================================
-// STATE
-// ============================================================
+// ===========================================================================
+// STORMWATCH — single-page map app with multiple weather data layers
+// ===========================================================================
+
+const PREFS_KEY = 'stormwatch_prefs';
+const VIEW_KEY = 'stormwatch_view';
+const LOCATIONS_KEY = 'stormwatch_locations';
+const PREF_DEFAULTS = {
+  map_style: 'dark',
+  radar_opacity: 0.7,
+  layer_radar: true,
+  layer_alerts: true,
+  layer_outlook: false,
+  layer_mcd: false,
+  layer_reports: false,
+  notify_severities: ['Extreme', 'Severe'],
+};
+
 const STATE = {
   map: null,
-  radarFrames: [],        // [{time: unixSec, path: string}] both past + future
+  prefs: { ...PREF_DEFAULTS },
+  radarFrames: [],
   currentFrameIdx: 0,
   playing: false,
   playInterval: null,
   alerts: [],
-  activeAlertLayer: false,
-  currentLocation: null,  // {lat, lon, label}
-  mapStyle: 'light',
+  outlookFeatures: [],
+  popups: [],
 };
 
 const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json';
-const RAINVIEWER_OPTIONS = '1_1';  // color scheme 1 (Universal Blue), smooth+snow on
+const RAINVIEWER_MAX_ZOOM = 7;  // Free tier limit as of Jan 2026
 const MAP_STYLES = {
   light: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
   dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
 };
+const SPC_LEVELS = {
+  TSTM: { rank: 1, label: 'General Thunder' },
+  MRGL: { rank: 2, label: 'Marginal (1/5)' },
+  SLGT: { rank: 3, label: 'Slight (2/5)' },
+  ENH:  { rank: 4, label: 'Enhanced (3/5)' },
+  MDT:  { rank: 5, label: 'Moderate (4/5)' },
+  HIGH: { rank: 6, label: 'High (5/5)' },
+};
 
-// ============================================================
+// ===========================================================================
+// PREFS + VIEW PERSISTENCE
+// ===========================================================================
+function loadPrefs() {
+  try { STATE.prefs = { ...PREF_DEFAULTS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }; }
+  catch { STATE.prefs = { ...PREF_DEFAULTS }; }
+}
+function loadSavedLocations() {
+  try { return JSON.parse(localStorage.getItem(LOCATIONS_KEY) || '[]'); }
+  catch { return []; }
+}
+
+// ===========================================================================
 // MAP INIT
-// ============================================================
+// ===========================================================================
 function initMap() {
-  // Default center: continental US
-  const savedView = JSON.parse(localStorage.getItem('stormwatch_view') || 'null');
-  const center = savedView?.center || [-97.5, 38.5];
-  const zoom = savedView?.zoom || 4.5;
+  loadPrefs();
+
+  // Apply layer-toggle UI from prefs
+  ['radar', 'alerts', 'outlook', 'mcd', 'reports'].forEach(name => {
+    const on = STATE.prefs[`layer_${name}`];
+    document.querySelector(`.layer-btn[data-layer="${name}"]`)?.classList.toggle('on', on);
+  });
+  document.querySelector('.layer-btn[data-layer="dark"]')?.classList.toggle('on', STATE.prefs.map_style === 'dark');
+
+  // Determine initial center/zoom: URL params > saved location primary > prefs default > last view > continental US
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlLat = parseFloat(urlParams.get('lat'));
+  const urlLon = parseFloat(urlParams.get('lon'));
+  const urlZoom = parseFloat(urlParams.get('zoom'));
+
+  let center = [-97.5, 38.5];
+  let zoom = 4.5;
+  let panelLat = null, panelLon = null, panelLabel = null;
+
+  if (!isNaN(urlLat) && !isNaN(urlLon)) {
+    center = [urlLon, urlLat];
+    zoom = isNaN(urlZoom) ? 9 : urlZoom;
+    panelLat = urlLat; panelLon = urlLon;
+  } else {
+    const primary = loadSavedLocations().find(l => l.is_primary);
+    if (primary) {
+      center = [primary.lon, primary.lat];
+      zoom = 9;
+      panelLat = primary.lat; panelLon = primary.lon; panelLabel = primary.label;
+    } else {
+      try {
+        const saved = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null');
+        if (saved?.center) { center = saved.center; zoom = saved.zoom; }
+      } catch {}
+    }
+  }
 
   STATE.map = new maplibregl.Map({
     container: 'map',
-    style: MAP_STYLES.light,
+    style: MAP_STYLES[STATE.prefs.map_style] || MAP_STYLES.dark,
     center, zoom,
     minZoom: 3, maxZoom: 14,
     attributionControl: false,
@@ -663,14 +967,21 @@ function initMap() {
   STATE.map.on('load', async () => {
     await loadRadarFrames();
     await loadAlertsForMapView();
+    if (STATE.prefs.layer_outlook) await loadOutlook();
+    if (STATE.prefs.layer_mcd) await loadMCD();
+    if (STATE.prefs.layer_reports) await loadStormReports();
     setupClickHandler();
+
+    // Open primary or URL-specified location automatically
+    if (panelLat != null && panelLon != null) {
+      setTimeout(() => fetchForecast(panelLat, panelLon, panelLabel), 400);
+    }
   });
 
   STATE.map.on('moveend', () => {
     const c = STATE.map.getCenter();
     const z = STATE.map.getZoom();
-    localStorage.setItem('stormwatch_view', JSON.stringify({ center: [c.lng, c.lat], zoom: z }));
-    // Refresh alerts when map moves significantly
+    localStorage.setItem(VIEW_KEY, JSON.stringify({ center: [c.lng, c.lat], zoom: z }));
     if (STATE._lastAlertCheck) {
       const dist = Math.abs(STATE._lastAlertCheck.lat - c.lat) + Math.abs(STATE._lastAlertCheck.lng - c.lng);
       if (dist > 2) loadAlertsForMapView();
@@ -678,25 +989,29 @@ function initMap() {
   });
 }
 
-// ============================================================
-// RADAR (RainViewer)
-// ============================================================
+function findFirstLabelLayer() {
+  const layers = STATE.map.getStyle().layers || [];
+  for (const l of layers) {
+    if (l.type === 'symbol' && l.id?.toLowerCase().includes('label')) return l.id;
+  }
+  return undefined;
+}
+
+// ===========================================================================
+// RADAR (RainViewer — free tier: zoom 1-7 only, Universal Blue scheme)
+// ===========================================================================
 async function loadRadarFrames() {
   try {
     const res = await fetch(RAINVIEWER_API);
     const data = await res.json();
     const past = data.radar?.past || [];
-    const nowcast = data.radar?.nowcast || [];
+    const nowcast = data.radar?.nowcast || [];  // empty on free tier as of 2026-01
     const host = data.host;
-    // Build [{time, path}] for past + forecast
     STATE.radarFrames = [
       ...past.map(f => ({ ...f, type: 'past', host })),
       ...nowcast.map(f => ({ ...f, type: 'future', host })),
     ];
-    // Default to most recent past frame
-    const mostRecentPastIdx = past.length - 1;
-    STATE.currentFrameIdx = Math.max(0, mostRecentPastIdx);
-    // Set up slider
+    STATE.currentFrameIdx = Math.max(0, past.length - 1);
     const slider = document.getElementById('timeSlider');
     slider.max = STATE.radarFrames.length - 1;
     slider.value = STATE.currentFrameIdx;
@@ -711,24 +1026,22 @@ function renderRadarFrame() {
   const frame = STATE.radarFrames[STATE.currentFrameIdx];
   if (!frame) return;
   const tileUrl = `${frame.host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
-  // Remove any existing radar source/layer, then re-add
   if (STATE.map.getLayer('radar-layer')) STATE.map.removeLayer('radar-layer');
   if (STATE.map.getSource('radar-source')) STATE.map.removeSource('radar-source');
   STATE.map.addSource('radar-source', {
     type: 'raster',
     tiles: [tileUrl],
     tileSize: 256,
+    minzoom: 0,
+    maxzoom: RAINVIEWER_MAX_ZOOM,
   });
-  // Add radar above base layers but below labels (insert before a label-ish layer if present)
-  const beforeId = findFirstLabelLayer();
   STATE.map.addLayer({
     id: 'radar-layer',
     type: 'raster',
     source: 'radar-source',
-    paint: { 'raster-opacity': 0.7 },
-  }, beforeId);
-
-  // Update UI
+    paint: { 'raster-opacity': STATE.prefs.radar_opacity },
+    layout: { visibility: STATE.prefs.layer_radar ? 'visible' : 'none' },
+  }, findFirstLabelLayer());
   const d = new Date(frame.time * 1000);
   const isToday = d.toDateString() === new Date().toDateString();
   const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -742,20 +1055,7 @@ function renderRadarFrame() {
   document.getElementById('timeSlider').value = STATE.currentFrameIdx;
 }
 
-function findFirstLabelLayer() {
-  // Insert radar BELOW labels so place names stay readable
-  const layers = STATE.map.getStyle().layers || [];
-  for (const l of layers) {
-    if (l.type === 'symbol' && l.id?.toLowerCase().includes('label')) return l.id;
-  }
-  return undefined;
-}
-
-function seekFrame(idx) {
-  STATE.currentFrameIdx = parseInt(idx);
-  renderRadarFrame();
-}
-
+function seekFrame(idx) { STATE.currentFrameIdx = parseInt(idx); renderRadarFrame(); }
 function togglePlayback() {
   STATE.playing = !STATE.playing;
   document.getElementById('playBtn').textContent = STATE.playing ? '❚❚' : '▶';
@@ -771,42 +1071,35 @@ function togglePlayback() {
   }
 }
 
-// ============================================================
+// ===========================================================================
 // ALERTS (NWS)
-// ============================================================
+// ===========================================================================
 async function loadAlertsForMapView() {
   const c = STATE.map.getCenter();
   STATE._lastAlertCheck = c;
-  // For zoomed-out US view, use national alerts. For zoomed-in, use point.
   const z = STATE.map.getZoom();
-  let url = '/api/alerts';
-  if (z > 6) url = `/api/alerts?lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}`;
+  const url = z > 6 ? `/api/alerts?lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}` : '/api/alerts';
   try {
     const res = await fetch(url);
     const data = await res.json();
     STATE.alerts = data.alerts || [];
     renderAlertOverlay();
     renderAlertBanner();
+    renderAlertsPane();
   } catch (e) {
     console.warn('Alerts load failed', e);
   }
 }
 
 function renderAlertOverlay() {
-  // Build a GeoJSON FeatureCollection of alert polygons
   const features = STATE.alerts
     .filter(a => a.geometry && (a.geometry.type === 'Polygon' || a.geometry.type === 'MultiPolygon'))
     .map(a => ({
       type: 'Feature',
       geometry: a.geometry,
-      properties: {
-        id: a.id,
-        event: a.event,
-        severity: a.severity || 'Unknown',
-      },
+      properties: { id: a.id, event: a.event, severity: a.severity || 'Unknown' },
     }));
   const fc = { type: 'FeatureCollection', features };
-  // Add or update source
   if (STATE.map.getSource('alerts-source')) {
     STATE.map.getSource('alerts-source').setData(fc);
   } else {
@@ -816,34 +1109,23 @@ function renderAlertOverlay() {
       type: 'fill',
       source: 'alerts-source',
       paint: {
-        'fill-color': [
-          'match', ['get', 'severity'],
-          'Extreme', '#f43f5e',
-          'Severe', '#fb923c',
-          'Moderate', '#fbbf24',
-          'Minor', '#38bdf8',
-          '#9ba2b0',
-        ],
+        'fill-color': ['match', ['get', 'severity'],
+          'Extreme', '#f43f5e', 'Severe', '#fb923c', 'Moderate', '#fbbf24', 'Minor', '#38bdf8', '#9ba2b0'],
         'fill-opacity': 0.18,
       },
+      layout: { visibility: STATE.prefs.layer_alerts ? 'visible' : 'none' },
     });
     STATE.map.addLayer({
       id: 'alerts-stroke',
       type: 'line',
       source: 'alerts-source',
       paint: {
-        'line-color': [
-          'match', ['get', 'severity'],
-          'Extreme', '#f43f5e',
-          'Severe', '#fb923c',
-          'Moderate', '#fbbf24',
-          'Minor', '#38bdf8',
-          '#9ba2b0',
-        ],
+        'line-color': ['match', ['get', 'severity'],
+          'Extreme', '#f43f5e', 'Severe', '#fb923c', 'Moderate', '#fbbf24', 'Minor', '#38bdf8', '#9ba2b0'],
         'line-width': 2,
       },
+      layout: { visibility: STATE.prefs.layer_alerts ? 'visible' : 'none' },
     });
-    // Click on polygon → show alert detail
     STATE.map.on('click', 'alerts-fill', (e) => {
       const f = e.features?.[0];
       if (!f) return;
@@ -858,18 +1140,49 @@ function renderAlertOverlay() {
 
 function renderAlertBanner() {
   const banner = document.getElementById('alertBanner');
-  if (!STATE.alerts.length) {
+  const surf = STATE.prefs.notify_severities || ['Extreme', 'Severe'];
+  const surfaceable = STATE.alerts.filter(a => surf.includes(a.severity));
+  if (!surfaceable.length) {
     banner.classList.remove('show');
     return;
   }
-  const top = STATE.alerts[0];
+  const top = surfaceable[0];
   const cls = top.severity === 'Extreme' ? '' :
               top.severity === 'Severe' ? 'warn' :
               top.severity === 'Moderate' ? 'watch' : 'advisory';
   banner.className = `alert-banner show ${cls}`;
-  document.getElementById('alertCount').textContent = STATE.alerts.length;
-  const label = top.event + (STATE.alerts.length > 1 ? ` + ${STATE.alerts.length - 1} more` : '');
+  document.getElementById('alertCount').textContent = surfaceable.length;
+  const label = top.event + (surfaceable.length > 1 ? ` + ${surfaceable.length - 1} more` : '');
   document.getElementById('alertLabel').textContent = label;
+}
+
+function renderAlertsPane() {
+  const pane = document.getElementById('paneAlerts');
+  if (!STATE.alerts.length) {
+    pane.innerHTML = '<div class="empty">No active alerts in this area.</div>';
+    document.getElementById('alertsBadge').style.display = 'none';
+    return;
+  }
+  const badge = document.getElementById('alertsBadge');
+  badge.textContent = STATE.alerts.length;
+  badge.style.display = 'inline-block';
+  pane.innerHTML = `<div class="panel-section">
+    <h3><span class="accent-bar" style="background:var(--extreme)"></span>${STATE.alerts.length} Active</h3>
+    ${STATE.alerts.map(renderAlertItem).join('')}
+  </div>`;
+}
+
+function renderAlertItem(a) {
+  const cls = (a.severity || '').toLowerCase();
+  const expires = a.expires ? new Date(a.expires) : null;
+  const expiresStr = expires
+    ? `Expires ${expires.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`
+    : '';
+  return `<div class="alert-item ${cls}" onclick='showAlertDetailById(${JSON.stringify(a.id)})'>
+    <div class="ev">${escapeHtml(a.event || 'Alert')}</div>
+    <div class="area">${escapeHtml((a.areaDesc || '').slice(0, 140))}</div>
+    <div class="when">${escapeHtml(expiresStr)}</div>
+  </div>`;
 }
 
 function showAlertDetail(alert) {
@@ -877,8 +1190,7 @@ function showAlertDetail(alert) {
   document.getElementById('adSub').textContent = `${alert.severity} · ${alert.urgency} · ${alert.areaDesc || ''}`;
   const expires = alert.expires ? new Date(alert.expires) : null;
   const expiresStr = expires ? expires.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Unknown';
-  let body = '';
-  body += `Expires: ${expiresStr}\n\n`;
+  let body = `Expires: ${expiresStr}\n\n`;
   if (alert.headline) body += `${alert.headline}\n\n`;
   if (alert.description) body += `${alert.description}\n\n`;
   if (alert.instruction) body += `INSTRUCTIONS:\n${alert.instruction}\n\n`;
@@ -886,13 +1198,234 @@ function showAlertDetail(alert) {
   document.getElementById('adBody').textContent = body;
   document.getElementById('alertDetailModal').classList.add('show');
 }
-function closeAlertDetail() {
-  document.getElementById('alertDetailModal').classList.remove('show');
+function showAlertDetailById(id) {
+  const a = STATE.alerts.find(x => x.id === id);
+  if (a) showAlertDetail(a);
+}
+function closeAlertDetail() { document.getElementById('alertDetailModal').classList.remove('show'); }
+
+// ===========================================================================
+// SPC CONVECTIVE OUTLOOK (Day 1 categorical)
+// ===========================================================================
+async function loadOutlook() {
+  try {
+    const res = await fetch('/api/spc-outlook?day=1');
+    const data = await res.json();
+    STATE.outlookFeatures = data.features || [];
+    renderOutlookOverlay();
+    renderOutlookChip();
+  } catch (e) {
+    console.warn('Outlook load failed', e);
+  }
 }
 
-// ============================================================
+function renderOutlookOverlay() {
+  const fc = { type: 'FeatureCollection', features: STATE.outlookFeatures };
+  if (STATE.map.getSource('outlook-source')) {
+    STATE.map.getSource('outlook-source').setData(fc);
+  } else {
+    STATE.map.addSource('outlook-source', { type: 'geojson', data: fc });
+    STATE.map.addLayer({
+      id: 'outlook-fill',
+      type: 'fill',
+      source: 'outlook-source',
+      paint: { 'fill-color': ['get', 'fill'], 'fill-opacity': 0.32 },
+      layout: { visibility: STATE.prefs.layer_outlook ? 'visible' : 'none' },
+    }, findFirstLabelLayer());
+    STATE.map.addLayer({
+      id: 'outlook-stroke',
+      type: 'line',
+      source: 'outlook-source',
+      paint: { 'line-color': ['get', 'stroke'], 'line-width': 2 },
+      layout: { visibility: STATE.prefs.layer_outlook ? 'visible' : 'none' },
+    }, findFirstLabelLayer());
+    STATE.map.on('click', 'outlook-fill', (e) => {
+      const f = e.features?.[0];
+      if (!f) return;
+      const p = f.properties || {};
+      new maplibregl.Popup({ closeButton: true })
+        .setLngLat(e.lngLat)
+        .setHTML(`<strong>${p.label2 || p.label}</strong><br/><span style="color:var(--text-2)">SPC Day 1 Convective Outlook</span><br/><small style="color:var(--muted)">Valid through ${formatYYYYMMDDHHMM(p.expire)}</small>`)
+        .addTo(STATE.map);
+      e.originalEvent.preventDefault();
+    });
+  }
+}
+
+function renderOutlookChip() {
+  if (!STATE.outlookFeatures.length || !STATE.prefs.layer_outlook) {
+    document.getElementById('outlookChip').classList.remove('show');
+    return;
+  }
+  let highest = null;
+  for (const f of STATE.outlookFeatures) {
+    const lvl = SPC_LEVELS[f.properties?.label];
+    if (lvl && (!highest || lvl.rank > highest.rank)) highest = { ...lvl, raw: f.properties };
+  }
+  if (!highest) {
+    document.getElementById('outlookChip').classList.remove('show');
+    return;
+  }
+  const chip = document.getElementById('outlookChip');
+  chip.classList.add('show');
+  chip.style.borderLeftColor = highest.raw.stroke;
+  const lvl = document.getElementById('outlookLevel');
+  lvl.textContent = highest.raw.label;
+  lvl.style.background = highest.raw.fill;
+  lvl.style.color = '#000';
+}
+
+function openOutlookInfo() {
+  let highest = null;
+  for (const f of STATE.outlookFeatures) {
+    const lvl = SPC_LEVELS[f.properties?.label];
+    if (lvl && (!highest || lvl.rank > highest.rank)) highest = { ...lvl, raw: f.properties };
+  }
+  if (!highest) return;
+  document.getElementById('adTitle').textContent = `SPC Day 1: ${highest.label}`;
+  document.getElementById('adSub').textContent = 'Storm Prediction Center · Convective Outlook';
+  document.getElementById('adBody').textContent =
+`The highest categorical severe risk area in the current SPC Day 1 outlook is ${highest.label}.
+
+The SPC issues categorical outlooks 5 times daily for the next 24 hours, ranking severe thunderstorm potential on a 5-point scale:
+
+• TSTM (General Thunderstorms) — thunder likely but no organized severe threat
+• MRGL (Marginal, 1/5) — limited, short-lived severe potential
+• SLGT (Slight, 2/5) — short-lived organized severe possible
+• ENH (Enhanced, 3/5) — numerous severe storms possible
+• MDT (Moderate, 4/5) — widespread severe likely
+• HIGH (High, 5/5) — outbreak of significant severe weather expected
+
+Valid through: ${formatYYYYMMDDHHMM(highest.raw.expire)}
+Issued: ${formatYYYYMMDDHHMM(highest.raw.issue)}`;
+  document.getElementById('alertDetailModal').classList.add('show');
+}
+
+function formatYYYYMMDDHHMM(s) {
+  if (!s) return '—';
+  const m = String(s).match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/);
+  if (!m) return s;
+  const [_, y, mo, d, h, mi] = m;
+  return `${y}-${mo}-${d} ${h}:${mi} UTC`;
+}
+
+// ===========================================================================
+// MESOSCALE DISCUSSIONS
+// ===========================================================================
+async function loadMCD() {
+  try {
+    const res = await fetch('/api/spc-mcd');
+    const data = await res.json();
+    renderMCDOverlay(data);
+  } catch (e) {
+    console.warn('MCD load failed', e);
+  }
+}
+
+function renderMCDOverlay(fc) {
+  if (STATE.map.getSource('mcd-source')) {
+    STATE.map.getSource('mcd-source').setData(fc);
+  } else {
+    STATE.map.addSource('mcd-source', { type: 'geojson', data: fc });
+    STATE.map.addLayer({
+      id: 'mcd-fill',
+      type: 'fill',
+      source: 'mcd-source',
+      paint: { 'fill-color': '#fb923c', 'fill-opacity': 0.15 },
+      layout: { visibility: STATE.prefs.layer_mcd ? 'visible' : 'none' },
+    }, findFirstLabelLayer());
+    STATE.map.addLayer({
+      id: 'mcd-stroke',
+      type: 'line',
+      source: 'mcd-source',
+      paint: { 'line-color': '#fb923c', 'line-width': 2, 'line-dasharray': [2, 2] },
+      layout: { visibility: STATE.prefs.layer_mcd ? 'visible' : 'none' },
+    }, findFirstLabelLayer());
+    STATE.map.on('click', 'mcd-fill', (e) => {
+      const f = e.features?.[0];
+      if (!f) return;
+      const p = f.properties || {};
+      const html = `<strong>${escapeHtml(p.name || 'MCD')}</strong><br/>
+        <span style="color:var(--text-2)">${escapeHtml(p.folderpath || '')}</span><br/>
+        ${p.popupinfo ? `<a href="${p.popupinfo}" target="_blank" style="color:var(--accent)">Read full discussion ›</a>` : ''}`;
+      new maplibregl.Popup({ closeButton: true })
+        .setLngLat(e.lngLat).setHTML(html).addTo(STATE.map);
+      e.originalEvent.preventDefault();
+    });
+  }
+}
+
+// ===========================================================================
+// STORM REPORTS (24hr LSRs)
+// ===========================================================================
+const LSR_COLOR = {
+  T: '#f43f5e',   // Tornado
+  F: '#1e40af',   // Flood / Flash Flood
+  H: '#4ade80',   // Hail
+  A: '#38bdf8',   // TSTM Wind
+  D: '#38bdf8',   // TSTM Wind Damage
+  G: '#38bdf8',   // Wind Gust
+  N: '#0ea5e9',   // Non-TSTM Wind
+  W: '#a855f7',   // Waterspout
+};
+
+async function loadStormReports() {
+  try {
+    const res = await fetch('/api/storm-reports?hours=24');
+    const data = await res.json();
+    renderReportsOverlay(data);
+  } catch (e) {
+    console.warn('LSR load failed', e);
+  }
+}
+
+function renderReportsOverlay(fc) {
+  // Add a `color` property based on type to feed into the circle paint
+  fc.features = (fc.features || []).map(f => ({
+    ...f,
+    properties: { ...f.properties, color: LSR_COLOR[f.properties?.type] || '#9ba2b0' }
+  }));
+  if (STATE.map.getSource('lsr-source')) {
+    STATE.map.getSource('lsr-source').setData(fc);
+  } else {
+    STATE.map.addSource('lsr-source', { type: 'geojson', data: fc });
+    STATE.map.addLayer({
+      id: 'lsr-circles',
+      type: 'circle',
+      source: 'lsr-source',
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 3, 8, 6, 12, 9],
+        'circle-color': ['get', 'color'],
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#0d1117',
+        'circle-opacity': 0.9,
+      },
+      layout: { visibility: STATE.prefs.layer_reports ? 'visible' : 'none' },
+    });
+    STATE.map.on('click', 'lsr-circles', (e) => {
+      const f = e.features?.[0];
+      if (!f) return;
+      const p = f.properties || {};
+      const valid = p.valid ? new Date(p.valid).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+      const magStr = p.magnitude ? `${p.magnitude}${p.unit ? ' ' + p.unit : ''}` : '';
+      const html = `
+        <strong>${escapeHtml(p.typetext || p.type)}</strong>${magStr ? ` <span style="color:var(--text-2)">${escapeHtml(magStr)}</span>` : ''}<br/>
+        <span style="color:var(--text-2)">${escapeHtml(p.city || '')}${p.state ? ', ' + escapeHtml(p.state) : ''}</span><br/>
+        <small style="color:var(--muted)">${valid} · ${escapeHtml(p.source || '')}</small>
+        ${p.remark ? `<div style="margin-top:6px;color:var(--text-2);font-size:11px;">${escapeHtml(p.remark)}</div>` : ''}
+      `;
+      new maplibregl.Popup({ closeButton: true })
+        .setLngLat(e.lngLat).setHTML(html).addTo(STATE.map);
+      e.originalEvent.preventDefault();
+    });
+    STATE.map.on('mouseenter', 'lsr-circles', () => STATE.map.getCanvas().style.cursor = 'pointer');
+    STATE.map.on('mouseleave', 'lsr-circles', () => STATE.map.getCanvas().style.cursor = '');
+  }
+}
+
+// ===========================================================================
 // CLICK-TO-FORECAST
-// ============================================================
+// ===========================================================================
 function setupClickHandler() {
   STATE.map.on('click', (e) => {
     if (e.originalEvent.defaultPrevented) return;
@@ -901,10 +1434,11 @@ function setupClickHandler() {
 }
 
 async function fetchForecast(lat, lon, label) {
-  openPanel();
+  openPanel('forecast');
   document.getElementById('panelLoc').textContent = label || `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
   document.getElementById('panelTitle').textContent = '—';
-  document.getElementById('panelBody').innerHTML = '<div class="loading">Loading forecast...</div>';
+  document.getElementById('paneForecast').innerHTML = '<div class="loading">Loading forecast...</div>';
+  document.getElementById('paneDiscussion').innerHTML = '<div class="loading">Loading forecast discussion...</div>';
   try {
     const res = await fetch(`/api/forecast?lat=${lat}&lon=${lon}`);
     if (!res.ok) {
@@ -913,22 +1447,20 @@ async function fetchForecast(lat, lon, label) {
     }
     const data = await res.json();
     STATE.currentLocation = { lat, lon, label: label || data.location?.city };
-    renderForecastPanel(data);
+    renderForecastPane(data);
+    fetchDiscussion(lat, lon);  // fire-and-forget — populates Discussion tab
   } catch (e) {
-    document.getElementById('panelBody').innerHTML = `<div class="empty">Forecast unavailable: ${escapeHtml(e.message)}</div>`;
+    document.getElementById('paneForecast').innerHTML = `<div class="empty">Forecast unavailable: ${escapeHtml(e.message)}</div>`;
+    document.getElementById('paneDiscussion').innerHTML = `<div class="empty">—</div>`;
   }
 }
 
-function renderForecastPanel(data) {
+function renderForecastPane(data) {
   const { location, current, hourly, daily } = data;
-  document.getElementById('panelLoc').textContent = location?.city
-    ? `${location.city}, ${location.state}`
-    : `${location?.lat.toFixed(3)}, ${location?.lon.toFixed(3)}`;
+  document.getElementById('panelLoc').textContent = location?.city ? `${location.city}, ${location.state}` : `${location?.lat.toFixed(3)}, ${location?.lon.toFixed(3)}`;
   document.getElementById('panelTitle').textContent = current?.conditions || daily?.[0]?.shortForecast || 'Forecast';
 
   let html = '';
-
-  // CURRENT
   if (current) {
     html += `<div class="panel-section">
       <h3><span class="accent-bar"></span>Current</h3>
@@ -937,24 +1469,15 @@ function renderForecastPanel(data) {
           <div class="temp">${current.temp != null ? Math.round(current.temp) + '°' : '—'}</div>
           <div class="conditions">${escapeHtml(current.conditions || '')}</div>
         </div>
-        <div class="stat"><span class="k">Feels like</span> <span class="v">${current.temp != null ? Math.round(current.temp) + '°' : '—'}</span></div>
         <div class="stat"><span class="k">Humidity</span> <span class="v">${current.humidity != null ? Math.round(current.humidity) + '%' : '—'}</span></div>
         <div class="stat"><span class="k">Wind</span> <span class="v">${current.windSpeed != null ? Math.round(current.windSpeed) + ' mph' : '—'}${current.windGust ? ` (g ${Math.round(current.windGust)})` : ''}</span></div>
         <div class="stat"><span class="k">Dewpoint</span> <span class="v">${current.dewpoint != null ? Math.round(current.dewpoint) + '°' : '—'}</span></div>
         <div class="stat"><span class="k">Pressure</span> <span class="v">${current.pressureMb != null ? Math.round(current.pressureMb) + ' mb' : '—'}</span></div>
         <div class="stat"><span class="k">Visibility</span> <span class="v">${current.visibility != null ? current.visibility + ' mi' : '—'}</span></div>
+        <div class="stat"><span class="k">Station</span> <span class="v">${escapeHtml(current.station || '—')}</span></div>
       </div>
     </div>`;
   }
-
-  if (STATE.alerts.length) {
-    html += `<div class="panel-section">
-      <h3><span class="accent-bar" style="background:var(--severe);"></span>Active Alerts (${STATE.alerts.length})</h3>
-      ${STATE.alerts.map(a => renderAlertItem(a)).join('')}
-    </div>`;
-  }
-
-  // HOURLY
   if (hourly && hourly.length) {
     html += `<div class="panel-section" style="padding-right: 0;">
       <h3 style="margin-bottom: 10px;"><span class="accent-bar"></span>Next 24 Hours</h3>
@@ -969,12 +1492,8 @@ function renderForecastPanel(data) {
       `).join('')}
     </div>`;
   }
-
-  // DAILY
   if (daily && daily.length) {
-    html += `<div class="panel-section">
-      <h3><span class="accent-bar"></span>7-Day Forecast</h3>`;
-    // Pair day + night periods
+    html += `<div class="panel-section"><h3><span class="accent-bar"></span>7-Day Forecast</h3>`;
     const pairs = [];
     for (let i = 0; i < daily.length; i++) {
       const p = daily[i];
@@ -983,7 +1502,6 @@ function renderForecastPanel(data) {
         const lowTemp = (next && !next.isDaytime) ? next.temperature : null;
         pairs.push({ day: p.name, short: p.shortForecast, hi: p.temperature, lo: lowTemp });
       } else if (i === 0) {
-        // Starts with night — show as Tonight
         pairs.push({ day: p.name, short: p.shortForecast, hi: null, lo: p.temperature });
       }
     }
@@ -996,68 +1514,112 @@ function renderForecastPanel(data) {
     `).join('');
     html += `</div>`;
   }
-
-  document.getElementById('panelBody').innerHTML = html;
+  document.getElementById('paneForecast').innerHTML = html;
 }
 
-function renderAlertItem(a) {
-  const cls = (a.severity || '').toLowerCase();
-  const expires = a.expires ? new Date(a.expires) : null;
-  const expiresStr = expires
-    ? `Expires ${expires.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`
-    : '';
-  return `<div class="alert-item ${cls}" onclick='showAlertDetailById(${JSON.stringify(a.id)})'>
-    <div class="ev">${escapeHtml(a.event || 'Alert')}</div>
-    <div class="area">${escapeHtml(a.areaDesc || '')}</div>
-    <div class="when">${escapeHtml(expiresStr)}</div>
-  </div>`;
-}
-
-function showAlertDetailById(id) {
-  const a = STATE.alerts.find(x => x.id === id);
-  if (a) showAlertDetail(a);
-}
-
-// ============================================================
-// PANEL
-// ============================================================
-function openPanel() { document.getElementById('panel').classList.add('show'); }
-function closePanel() { document.getElementById('panel').classList.remove('show'); }
-function switchPanelTab(t) { /* placeholder if multi-tab added */ }
-
-// ============================================================
-// LAYER TOGGLES
-// ============================================================
-function toggleLayer(name) {
-  const btn = document.querySelector(`.layer-btn[data-layer="${name}"]`);
-  const isOn = btn.classList.contains('on');
-  const newOn = !isOn;
-  btn.classList.toggle('on', newOn);
-
-  if (name === 'radar') {
-    if (STATE.map.getLayer('radar-layer')) {
-      STATE.map.setLayoutProperty('radar-layer', 'visibility', newOn ? 'visible' : 'none');
-    }
-  } else if (name === 'alerts') {
-    ['alerts-fill', 'alerts-stroke'].forEach(id => {
-      if (STATE.map.getLayer(id)) STATE.map.setLayoutProperty(id, 'visibility', newOn ? 'visible' : 'none');
-    });
-  } else if (name === 'dark') {
-    STATE.mapStyle = newOn ? 'dark' : 'light';
-    const c = STATE.map.getCenter();
-    const z = STATE.map.getZoom();
-    STATE.map.setStyle(MAP_STYLES[STATE.mapStyle]);
-    STATE.map.once('styledata', () => {
-      // Re-add radar + alerts after style change
-      renderRadarFrame();
-      renderAlertOverlay();
-    });
+async function fetchDiscussion(lat, lon) {
+  try {
+    const res = await fetch(`/api/discussion?lat=${lat}&lon=${lon}`);
+    const data = await res.json();
+    if (!res.ok || !data.productText) throw new Error(data.error || 'No discussion available');
+    const issued = data.issued ? new Date(data.issued).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) : '—';
+    document.getElementById('paneDiscussion').innerHTML = `
+      <div class="panel-section">
+        <h3><span class="accent-bar"></span>Area Forecast Discussion</h3>
+        <div class="afd-meta">
+          <b>${escapeHtml(data.office || '')}</b> — issued ${escapeHtml(issued)}
+        </div>
+        <div class="afd-text">${escapeHtml(data.productText)}</div>
+      </div>
+    `;
+  } catch (e) {
+    document.getElementById('paneDiscussion').innerHTML = `<div class="empty">Discussion unavailable: ${escapeHtml(e.message)}</div>`;
   }
 }
 
-// ============================================================
+// ===========================================================================
+// PANEL + TABS
+// ===========================================================================
+function openPanel(pane = 'forecast') {
+  document.getElementById('panel').classList.add('show');
+  switchPane(pane);
+}
+function closePanel() { document.getElementById('panel').classList.remove('show'); }
+function switchPane(name) {
+  document.querySelectorAll('.panel-tab').forEach(b => b.classList.toggle('active', b.dataset.pane === name));
+  document.querySelectorAll('.panel-pane').forEach(p => p.classList.toggle('active', p.id === 'pane' + name.charAt(0).toUpperCase() + name.slice(1)));
+}
+
+// ===========================================================================
+// LAYER TOGGLES + PERSISTENCE
+// ===========================================================================
+async function toggleLayer(name) {
+  const btn = document.querySelector(`.layer-btn[data-layer="${name}"]`);
+  const newOn = !btn.classList.contains('on');
+  btn.classList.toggle('on', newOn);
+
+  if (name === 'radar') {
+    STATE.prefs.layer_radar = newOn;
+    setVis('radar-layer', newOn);
+  } else if (name === 'alerts') {
+    STATE.prefs.layer_alerts = newOn;
+    setVis('alerts-fill', newOn);
+    setVis('alerts-stroke', newOn);
+  } else if (name === 'outlook') {
+    STATE.prefs.layer_outlook = newOn;
+    if (newOn && !STATE.outlookFeatures.length) await loadOutlook();
+    setVis('outlook-fill', newOn);
+    setVis('outlook-stroke', newOn);
+    renderOutlookChip();
+  } else if (name === 'mcd') {
+    STATE.prefs.layer_mcd = newOn;
+    if (newOn && !STATE.map.getSource('mcd-source')) await loadMCD();
+    setVis('mcd-fill', newOn);
+    setVis('mcd-stroke', newOn);
+  } else if (name === 'reports') {
+    STATE.prefs.layer_reports = newOn;
+    if (newOn && !STATE.map.getSource('lsr-source')) await loadStormReports();
+    setVis('lsr-circles', newOn);
+  } else if (name === 'dark') {
+    STATE.prefs.map_style = newOn ? 'dark' : 'light';
+    const c = STATE.map.getCenter();
+    const z = STATE.map.getZoom();
+    STATE.map.setStyle(MAP_STYLES[STATE.prefs.map_style]);
+    STATE.map.once('idle', () => {
+      // Re-add radar + all overlays after style change wiped them
+      renderRadarFrame();
+      renderAlertOverlay();
+      if (STATE.outlookFeatures.length) renderOutlookOverlay();
+      // MCD + reports sources re-created on next loadX call
+      if (STATE.prefs.layer_mcd) loadMCD();
+      if (STATE.prefs.layer_reports) loadStormReports();
+    });
+  }
+  savePrefs();
+}
+
+function setVis(layerId, on) {
+  if (STATE.map.getLayer(layerId)) {
+    STATE.map.setLayoutProperty(layerId, 'visibility', on ? 'visible' : 'none');
+  }
+}
+
+function savePrefs() {
+  localStorage.setItem(PREFS_KEY, JSON.stringify(STATE.prefs));
+}
+
+// ===========================================================================
+// LEGEND
+// ===========================================================================
+function toggleLegend() {
+  const el = document.getElementById('legend');
+  el.classList.toggle('show');
+  document.getElementById('legendToggle').textContent = el.classList.contains('show') ? 'Hide Legend' : 'Legend';
+}
+
+// ===========================================================================
 // SEARCH
-// ============================================================
+// ===========================================================================
 let searchTimeout = null;
 document.getElementById('searchInput').addEventListener('input', (e) => {
   clearTimeout(searchTimeout);
@@ -1078,7 +1640,6 @@ document.getElementById('searchInput').addEventListener('focus', (e) => {
 });
 
 async function doSearch(q) {
-  // Detect coordinates "lat,lon" pattern
   const coordsMatch = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,\s]+\s*(-?\d+(?:\.\d+)?)\s*$/);
   if (coordsMatch) {
     const lat = parseFloat(coordsMatch[1]);
@@ -1120,9 +1681,9 @@ function selectSearchResult(lat, lon, label) {
   setTimeout(() => fetchForecast(lat, lon, label), 800);
 }
 
-// ============================================================
+// ===========================================================================
 // GEOLOCATION
-// ============================================================
+// ===========================================================================
 document.getElementById('locateBtn').addEventListener('click', () => {
   if (!navigator.geolocation) return alert('Geolocation not supported by your browser');
   document.getElementById('locateBtn').textContent = '⏳';
@@ -1141,21 +1702,24 @@ document.getElementById('locateBtn').addEventListener('click', () => {
   );
 });
 
-// ============================================================
+// ===========================================================================
 // HELPERS
-// ============================================================
+// ===========================================================================
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// ============================================================
+// ===========================================================================
 // INIT
-// ============================================================
+// ===========================================================================
 initMap();
 
-// Auto-refresh radar every 5 min, alerts every 2 min
+// Auto-refresh: radar every 5 min, alerts every 2 min, outlook every 15 min, MCD every 5 min, LSRs every 5 min
 setInterval(loadRadarFrames, 5 * 60 * 1000);
 setInterval(loadAlertsForMapView, 2 * 60 * 1000);
+setInterval(() => { if (STATE.prefs.layer_outlook) loadOutlook(); }, 15 * 60 * 1000);
+setInterval(() => { if (STATE.prefs.layer_mcd) loadMCD(); }, 5 * 60 * 1000);
+setInterval(() => { if (STATE.prefs.layer_reports) loadStormReports(); }, 5 * 60 * 1000);
 </script>
 
 </body>

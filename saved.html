@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0d1117" />
+<title>Saved Locations · Stormwatch</title>
+<link rel="stylesheet" href="/_shared.css" />
+<style>
+  .loc-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: start;
+  }
+  .loc-card.primary { border-left-color: var(--accent); }
+  .loc-card .label-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .loc-card .label { font-weight: 800; font-size: 15px; }
+  .loc-card .primary-badge {
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 10px; font-weight: 800; padding: 2px 7px;
+    border-radius: 999px; text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  .loc-card .city { color: var(--text-2); font-size: 13px; }
+  .loc-card .conditions { margin-top: 8px; display: flex; align-items: baseline; gap: 10px; font-size: 12px; color: var(--text-2); }
+  .loc-card .temp { font-size: 28px; font-weight: 300; color: var(--text); letter-spacing: -1px; line-height: 1; }
+  .loc-card .alerts { margin-top: 8px; color: var(--extreme); font-size: 12px; font-weight: 700; }
+  .loc-card .actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+  .loc-card .actions button { padding: 5px 10px; font-size: 11px; border-radius: 6px; }
+</style>
+</head>
+<body>
+  <header class="app-header">
+    <a href="/" class="logo"><span class="bolt">⚡</span> Stormwatch</a>
+    <nav>
+      <a href="/">Radar</a>
+      <a href="/saved.html" class="active">Saved</a>
+      <a href="/alerts.html">Alerts</a>
+      <a href="/settings.html">Settings</a>
+    </nav>
+  </header>
+
+  <div class="container">
+    <h1>Saved Locations</h1>
+    <p class="lede">Home, work, family, anywhere you want a one-tap forecast and active-alert check. Stored locally in your browser — no account needed.</p>
+
+    <button class="btn" onclick="openAddModal()">+ Add Location</button>
+
+    <h2>Your places</h2>
+    <div id="locationList"><div class="loading">Loading...</div></div>
+  </div>
+
+  <div class="modal" id="locModal" onclick="if(event.target.id==='locModal') closeModal()">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="title" id="modalTitle">Add Location</div>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <label>Label</label>
+        <input type="text" id="labelInput" placeholder="Home, Work, Mom's house..." />
+
+        <label>Search city or address</label>
+        <input type="text" id="searchInput" placeholder="Lee's Summit, MO" autocomplete="off" />
+        <div id="searchResults" style="margin-top: 8px;"></div>
+
+        <label>Or paste coordinates</label>
+        <input type="text" id="coordsInput" placeholder="38.91, -94.38" />
+
+        <div style="margin-top: 18px; display: flex; gap: 16px; align-items: center;">
+          <label class="toggle" style="margin: 0;">
+            <input type="checkbox" id="primaryToggle" />
+            <span class="slider"></span>
+          </label>
+          <span style="font-size: 13px;">Primary (opens by default)</span>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn" onclick="saveLocation()">Save</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const STORAGE_KEY = 'stormwatch_locations';
+let editingId = null;
+let pendingCoords = null;
+
+function loadFromStorage() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  } catch { return []; }
+}
+function saveToStorage(locs) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(locs));
+}
+
+function render() {
+  const locs = loadFromStorage();
+  const list = document.getElementById('locationList');
+  if (!locs.length) {
+    list.innerHTML = '<div class="empty">No saved locations yet. Add one above.</div>';
+    return;
+  }
+  // Sort: primary first, then alphabetical
+  locs.sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0) || a.label.localeCompare(b.label));
+  list.innerHTML = locs.map(l => `
+    <div class="loc-card ${l.is_primary ? 'primary' : ''}" id="loc-${l.id}">
+      <div>
+        <div class="label-row">
+          <span class="label">${escapeHtml(l.label)}</span>
+          ${l.is_primary ? '<span class="primary-badge">Primary</span>' : ''}
+        </div>
+        <div class="city">${escapeHtml(l.city ? l.city + ', ' + (l.state || '') : `${l.lat.toFixed(3)}, ${l.lon.toFixed(3)}`)}</div>
+        <div class="conditions" id="cond-${l.id}">
+          <span class="temp">—</span>
+          <span class="conditions-text">Loading...</span>
+        </div>
+        <div class="alerts" id="alerts-${l.id}" style="display:none;"></div>
+      </div>
+      <div class="actions">
+        <button class="btn small" onclick="openOnMap(${l.lat}, ${l.lon})">Map</button>
+        <button class="btn small secondary" onclick="editLoc('${l.id}')">Edit</button>
+        <button class="btn small danger" onclick="deleteLoc('${l.id}')">×</button>
+      </div>
+    </div>
+  `).join('');
+  for (const loc of locs) hydrate(loc);
+}
+
+async function hydrate(l) {
+  try {
+    const r = await fetch(`/api/forecast?lat=${l.lat}&lon=${l.lon}`);
+    const d = await r.json();
+    const condBox = document.getElementById(`cond-${l.id}`);
+    if (condBox) {
+      const tempEl = condBox.querySelector('.temp');
+      const txtEl = condBox.querySelector('.conditions-text');
+      const temp = d.current?.temp != null ? Math.round(d.current.temp) : (d.daily?.[0]?.temperature ?? '—');
+      const cond = d.current?.conditions || d.daily?.[0]?.shortForecast || '';
+      tempEl.textContent = temp + '°';
+      txtEl.textContent = cond;
+    }
+  } catch {}
+  try {
+    const r = await fetch(`/api/alerts?lat=${l.lat}&lon=${l.lon}`);
+    const d = await r.json();
+    if (d.alerts?.length) {
+      const top = d.alerts[0];
+      const el = document.getElementById(`alerts-${l.id}`);
+      el.style.display = 'block';
+      el.textContent = `⚠ ${top.event}${d.alerts.length > 1 ? ` + ${d.alerts.length - 1} more` : ''}`;
+    }
+  } catch {}
+}
+
+function openOnMap(lat, lon) {
+  window.location.href = `/?lat=${lat}&lon=${lon}&zoom=9`;
+}
+
+function openAddModal() {
+  editingId = null;
+  pendingCoords = null;
+  document.getElementById('modalTitle').textContent = 'Add Location';
+  document.getElementById('labelInput').value = '';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('coordsInput').value = '';
+  document.getElementById('searchResults').innerHTML = '';
+  document.getElementById('primaryToggle').checked = false;
+  document.getElementById('locModal').classList.add('show');
+}
+
+function editLoc(id) {
+  const locs = loadFromStorage();
+  const l = locs.find(x => x.id === id);
+  if (!l) return;
+  editingId = id;
+  pendingCoords = { lat: l.lat, lon: l.lon, city: l.city, state: l.state };
+  document.getElementById('modalTitle').textContent = 'Edit Location';
+  document.getElementById('labelInput').value = l.label;
+  document.getElementById('searchInput').value = l.city ? `${l.city}, ${l.state || ''}` : '';
+  document.getElementById('coordsInput').value = `${l.lat}, ${l.lon}`;
+  document.getElementById('primaryToggle').checked = !!l.is_primary;
+  document.getElementById('locModal').classList.add('show');
+}
+
+function closeModal() { document.getElementById('locModal').classList.remove('show'); }
+
+let searchT;
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  clearTimeout(searchT);
+  const q = e.target.value.trim();
+  if (q.length < 2) { document.getElementById('searchResults').innerHTML = ''; return; }
+  searchT = setTimeout(() => doSearch(q), 350);
+});
+async function doSearch(q) {
+  try {
+    const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    const results = data.results || [];
+    document.getElementById('searchResults').innerHTML = results.map(r => `
+      <div class="card" style="padding: 8px 12px; margin-bottom: 4px; cursor: pointer;" onclick='pickResult(${r.lat}, ${r.lon}, ${JSON.stringify(r.shortName || r.name)})'>
+        <strong style="font-size: 13px;">${escapeHtml(r.shortName || r.name.split(',')[0])}</strong>
+        <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">${escapeHtml(r.name)}</div>
+      </div>
+    `).join('') || '<div style="color: var(--muted); font-size: 12px;">No results.</div>';
+  } catch (e) { console.warn(e); }
+}
+function pickResult(lat, lon, label) {
+  pendingCoords = { lat, lon };
+  document.getElementById('coordsInput').value = `${lat}, ${lon}`;
+  document.getElementById('searchInput').value = label;
+  document.getElementById('searchResults').innerHTML = '';
+  if (!document.getElementById('labelInput').value) {
+    document.getElementById('labelInput').value = label.split(',')[0];
+  }
+}
+
+async function saveLocation() {
+  const label = document.getElementById('labelInput').value.trim();
+  const coords = document.getElementById('coordsInput').value.trim();
+  if (!label || !coords) return alert('Need label + coordinates');
+  const m = coords.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,\s]+\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (!m) return alert('Coordinates should be like "38.91, -94.38"');
+  const lat = parseFloat(m[1]);
+  const lon = parseFloat(m[2]);
+  let city = pendingCoords?.city, state = pendingCoords?.state;
+  if (!city) {
+    try {
+      const r = await fetch(`/api/forecast?lat=${lat}&lon=${lon}`);
+      const d = await r.json();
+      city = d.location?.city;
+      state = d.location?.state;
+    } catch {}
+  }
+  const isPrimary = document.getElementById('primaryToggle').checked;
+  const locs = loadFromStorage();
+  if (isPrimary) locs.forEach(l => l.is_primary = false);
+  if (editingId) {
+    const idx = locs.findIndex(x => x.id === editingId);
+    if (idx >= 0) locs[idx] = { ...locs[idx], label, lat, lon, city, state, is_primary: isPrimary };
+  } else {
+    locs.push({
+      id: crypto.randomUUID(),
+      label, lat, lon, city, state,
+      is_primary: isPrimary,
+      created_at: new Date().toISOString(),
+    });
+  }
+  saveToStorage(locs);
+  closeModal();
+  render();
+}
+
+function deleteLoc(id) {
+  const locs = loadFromStorage();
+  const l = locs.find(x => x.id === id);
+  if (!l) return;
+  if (!confirm(`Remove "${l.label}"?`)) return;
+  saveToStorage(locs.filter(x => x.id !== id));
+  render();
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0d1117" />
+<title>Active Alerts · Stormwatch</title>
+<link rel="stylesheet" href="/_shared.css" />
+<style>
+  .filter-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+  .chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .chip.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .chip.severe.on { background: rgba(251, 146, 60, 0.15); color: var(--severe); border-color: var(--severe); }
+  .chip.extreme.on { background: rgba(244, 63, 94, 0.15); color: var(--extreme); border-color: var(--extreme); }
+
+  .alert-row {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    cursor: pointer;
+  }
+  .alert-row.extreme { border-left-color: var(--extreme); }
+  .alert-row.severe { border-left-color: var(--severe); }
+  .alert-row.moderate { border-left-color: var(--warn); }
+  .alert-row .top { display: flex; justify-content: space-between; align-items: start; gap: 10px; margin-bottom: 4px; }
+  .alert-row .event { font-weight: 800; font-size: 15px; }
+  .alert-row .sev {
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    flex-shrink: 0;
+  }
+  .alert-row .sev.extreme { background: rgba(244, 63, 94, 0.18); color: var(--extreme); }
+  .alert-row .sev.severe { background: rgba(251, 146, 60, 0.18); color: var(--severe); }
+  .alert-row .sev.moderate { background: rgba(251, 191, 36, 0.18); color: var(--warn); }
+  .alert-row .sev.minor { background: var(--accent-soft); color: var(--accent); }
+  .alert-row .area { font-size: 12px; color: var(--text-2); margin-bottom: 4px; }
+  .alert-row .expires { font-size: 11px; color: var(--muted); }
+  .summary { display: flex; gap: 18px; margin-bottom: 14px; font-size: 12px; color: var(--text-2); }
+  .summary b { color: var(--text); font-weight: 800; }
+</style>
+</head>
+<body>
+  <header class="app-header">
+    <a href="/" class="logo"><span class="bolt">⚡</span> Stormwatch</a>
+    <nav>
+      <a href="/">Radar</a>
+      <a href="/saved.html">Saved</a>
+      <a href="/alerts.html" class="active">Alerts</a>
+      <a href="/settings.html">Settings</a>
+    </nav>
+  </header>
+
+  <div class="container">
+    <h1>Active Alerts</h1>
+    <p class="lede">Live feed from the National Weather Service. Updates every 2 minutes.</p>
+
+    <div class="summary" id="summary"></div>
+
+    <div class="filter-row" id="filterRow">
+      <div class="chip on" data-sev="all">All</div>
+      <div class="chip extreme" data-sev="Extreme">Extreme</div>
+      <div class="chip severe" data-sev="Severe">Severe</div>
+      <div class="chip" data-sev="Moderate">Moderate</div>
+      <div class="chip" data-sev="Minor">Minor</div>
+    </div>
+
+    <input type="text" id="searchBox" placeholder="Filter by event type or area (e.g. tornado, kansas)" style="margin-bottom: 14px;" />
+
+    <div id="list"><div class="loading">Loading alerts...</div></div>
+  </div>
+
+  <!-- Detail modal -->
+  <div class="modal" id="detailModal" onclick="if(event.target.id==='detailModal') closeDetail()">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="title" id="dTitle">—</div>
+        <button class="modal-close" onclick="closeDetail()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 12px;" id="dSub">—</div>
+        <div style="font-size: 13px; line-height: 1.6; color: var(--text-2); white-space: pre-wrap;" id="dBody">—</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+let allAlerts = [];
+let currentSev = 'all';
+let searchQ = '';
+
+async function init() {
+  loadAlerts();
+}
+
+async function loadAlerts() {
+  try {
+    const res = await fetch('/api/alerts');
+    const data = await res.json();
+    allAlerts = data.alerts || [];
+    renderSummary();
+    render();
+  } catch (e) {
+    document.getElementById('list').innerHTML = `<div class="empty">Failed to load: ${e.message}</div>`;
+  }
+}
+
+function renderSummary() {
+  const counts = { Extreme: 0, Severe: 0, Moderate: 0, Minor: 0 };
+  allAlerts.forEach(a => { if (counts[a.severity] != null) counts[a.severity]++; });
+  document.getElementById('summary').innerHTML = `
+    <span><b>${allAlerts.length}</b> total</span>
+    <span><b>${counts.Extreme}</b> extreme</span>
+    <span><b>${counts.Severe}</b> severe</span>
+    <span><b>${counts.Moderate}</b> moderate</span>
+    <span><b>${counts.Minor}</b> minor</span>
+  `;
+}
+
+function render() {
+  let filtered = allAlerts;
+  if (currentSev !== 'all') filtered = filtered.filter(a => a.severity === currentSev);
+  if (searchQ) {
+    const q = searchQ.toLowerCase();
+    filtered = filtered.filter(a =>
+      (a.event || '').toLowerCase().includes(q) ||
+      (a.areaDesc || '').toLowerCase().includes(q) ||
+      (a.headline || '').toLowerCase().includes(q)
+    );
+  }
+  const list = document.getElementById('list');
+  if (!filtered.length) {
+    list.innerHTML = '<div class="empty">No matching alerts right now.</div>';
+    return;
+  }
+  list.innerHTML = filtered.map((a, i) => {
+    const cls = (a.severity || '').toLowerCase();
+    const expires = a.expires ? new Date(a.expires).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+    return `<div class="alert-row ${cls}" onclick="showDetail(${i})">
+      <div class="top">
+        <div class="event">${escapeHtml(a.event)}</div>
+        <div class="sev ${cls}">${a.severity}</div>
+      </div>
+      <div class="area">${escapeHtml((a.areaDesc || '').slice(0, 200))}${(a.areaDesc || '').length > 200 ? '…' : ''}</div>
+      <div class="expires">${expires ? 'Expires ' + expires : ''}</div>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('filterRow').addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  currentSev = chip.dataset.sev;
+  document.querySelectorAll('#filterRow .chip').forEach(c => c.classList.remove('on'));
+  chip.classList.add('on');
+  render();
+});
+
+let sT;
+document.getElementById('searchBox').addEventListener('input', (e) => {
+  clearTimeout(sT);
+  sT = setTimeout(() => { searchQ = e.target.value.trim(); render(); }, 200);
+});
+
+function showDetail(i) {
+  // Use the currently-rendered filtered list to find the right alert
+  let filtered = allAlerts;
+  if (currentSev !== 'all') filtered = filtered.filter(a => a.severity === currentSev);
+  if (searchQ) {
+    const q = searchQ.toLowerCase();
+    filtered = filtered.filter(a =>
+      (a.event || '').toLowerCase().includes(q) ||
+      (a.areaDesc || '').toLowerCase().includes(q) ||
+      (a.headline || '').toLowerCase().includes(q)
+    );
+  }
+  const a = filtered[i];
+  if (!a) return;
+  document.getElementById('dTitle').textContent = a.event;
+  document.getElementById('dSub').textContent = `${a.severity} · ${a.urgency} · ${a.areaDesc || ''}`;
+  let body = '';
+  const exp = a.expires ? new Date(a.expires) : null;
+  body += `Expires: ${exp ? exp.toLocaleString() : 'Unknown'}\n\n`;
+  if (a.headline) body += `${a.headline}\n\n`;
+  if (a.description) body += `${a.description}\n\n`;
+  if (a.instruction) body += `INSTRUCTIONS:\n${a.instruction}\n\n`;
+  if (a.senderName) body += `Issued by: ${a.senderName}`;
+  document.getElementById('dBody').textContent = body;
+  document.getElementById('detailModal').classList.add('show');
+}
+function closeDetail() { document.getElementById('detailModal').classList.remove('show'); }
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+init();
+setInterval(loadAlerts, 2 * 60 * 1000);
+</script>
+</body>
+</html>

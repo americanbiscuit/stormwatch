@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0d1117" />
+<title>Settings · Stormwatch</title>
+<link rel="stylesheet" href="/_shared.css" />
+<style>
+  .pref-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+  .pref-row:last-child { border-bottom: none; }
+  .pref-row .info { flex: 1; min-width: 0; }
+  .pref-row .name { font-weight: 700; font-size: 14px; }
+  .pref-row .help { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+  .pref-row .ctrl { flex-shrink: 0; }
+  .pref-row select, .pref-row input[type="number"] { width: 110px; padding: 6px 10px; font-size: 13px; }
+  .severity-pill {
+    display: inline-block;
+    padding: 4px 12px;
+    margin: 4px 4px 0 0;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .severity-pill.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .saved-pill {
+    display: inline-block;
+    padding: 4px 10px;
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--green);
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: 10px;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .saved-pill.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <header class="app-header">
+    <a href="/" class="logo"><span class="bolt">⚡</span> Stormwatch</a>
+    <nav>
+      <a href="/">Radar</a>
+      <a href="/saved.html">Saved</a>
+      <a href="/alerts.html">Alerts</a>
+      <a href="/settings.html" class="active">Settings</a>
+    </nav>
+  </header>
+
+  <div class="container">
+    <h1>Settings <span class="saved-pill" id="savedPill">Saved</span></h1>
+    <p class="lede">Preferences are stored in your browser.</p>
+
+    <h2>Map</h2>
+    <div class="card">
+      <div class="pref-row">
+        <div class="info">
+          <div class="name">Default map style</div>
+          <div class="help">Dark (Matter) is for storm watching at night. Light (Positron) is easier in daylight.</div>
+        </div>
+        <div class="ctrl">
+          <select id="mapStyle">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </div>
+      </div>
+      <div class="pref-row">
+        <div class="info">
+          <div class="name">Radar opacity</div>
+          <div class="help">0.7 = balanced. Higher = radar dominates; lower = base map dominates.</div>
+        </div>
+        <div class="ctrl">
+          <input type="number" id="radarOpacity" min="0.2" max="1" step="0.1" />
+        </div>
+      </div>
+    </div>
+
+    <h2>Default Layers</h2>
+    <div class="card">
+      <div class="pref-row">
+        <div class="info"><div class="name">Radar</div><div class="help">NEXRAD precipitation from RainViewer.</div></div>
+        <div class="ctrl"><label class="toggle"><input type="checkbox" id="layerRadar" /><span class="slider"></span></label></div>
+      </div>
+      <div class="pref-row">
+        <div class="info"><div class="name">NWS Alerts</div><div class="help">Warnings, watches, advisories — colored polygons.</div></div>
+        <div class="ctrl"><label class="toggle"><input type="checkbox" id="layerAlerts" /><span class="slider"></span></label></div>
+      </div>
+      <div class="pref-row">
+        <div class="info"><div class="name">SPC Convective Outlook</div><div class="help">Day 1 categorical severe risk areas (TSTM / MRGL / SLGT / ENH / MDT / HIGH).</div></div>
+        <div class="ctrl"><label class="toggle"><input type="checkbox" id="layerOutlook" /><span class="slider"></span></label></div>
+      </div>
+      <div class="pref-row">
+        <div class="info"><div class="name">Mesoscale Discussions</div><div class="help">SPC-issued forecaster notes for evolving severe weather in the next 1-3 hours.</div></div>
+        <div class="ctrl"><label class="toggle"><input type="checkbox" id="layerMCD" /><span class="slider"></span></label></div>
+      </div>
+      <div class="pref-row">
+        <div class="info"><div class="name">Storm Reports (24hr)</div><div class="help">Tornadoes (red), hail (green), wind damage (blue) from spotters and officials.</div></div>
+        <div class="ctrl"><label class="toggle"><input type="checkbox" id="layerReports" /><span class="slider"></span></label></div>
+      </div>
+    </div>
+
+    <h2>Alert Surfacing</h2>
+    <div class="card">
+      <div class="name" style="font-weight: 700; font-size: 14px;">Severities to highlight</div>
+      <div class="help" style="font-size: 12px; color: var(--text-2); margin: 2px 0 12px;">Selected severities trigger the pulsing top banner.</div>
+      <div id="severityPills">
+        <span class="severity-pill" data-sev="Extreme">Extreme</span>
+        <span class="severity-pill" data-sev="Severe">Severe</span>
+        <span class="severity-pill" data-sev="Moderate">Moderate</span>
+        <span class="severity-pill" data-sev="Minor">Minor</span>
+      </div>
+    </div>
+
+    <h2>Glossary</h2>
+    <div class="card" style="font-size: 13px; color: var(--text-2); line-height: 1.7;">
+      <p><strong style="color:var(--text)">Reflectivity (radar)</strong> — how strongly precipitation reflects the radar beam. Higher = heavier rain or hail.</p>
+      <p><strong style="color:var(--text)">Convective Outlook</strong> — SPC's daily forecast of severe thunderstorm potential. Levels: <em>TSTM</em> (general thunder), <em>MRGL</em> (1/5), <em>SLGT</em> (2/5), <em>ENH</em> (3/5), <em>MDT</em> (4/5), <em>HIGH</em> (5/5).</p>
+      <p><strong style="color:var(--text)">Watch vs Warning</strong> — a <em>watch</em> means conditions favor severe weather over a wide area; a <em>warning</em> means severe weather is happening or imminent in a small area.</p>
+      <p><strong style="color:var(--text)">Mesoscale Discussion (MCD/MD)</strong> — SPC forecaster's short-term analysis of an evolving threat, usually preceding watch issuance.</p>
+      <p><strong style="color:var(--text)">Local Storm Report (LSR)</strong> — verified report of severe weather (tornado, hail size, wind damage, etc.) from a spotter, official, or the public.</p>
+      <p><strong style="color:var(--text)">AFD (Area Forecast Discussion)</strong> — your local NWS office's plain-English explanation of why they're forecasting what they're forecasting. The most insightful free product.</p>
+    </div>
+
+    <h2 style="margin-top: 36px;">About</h2>
+    <div class="card" style="color: var(--text-2); font-size: 13px;">
+      Stormwatch aggregates free public weather data — NEXRAD via RainViewer, NWS API for forecasts/alerts/discussions, SPC for outlooks/MCDs, IEM for storm reports. No tracking, no ads, no API keys.
+      Source on <a href="https://github.com/americanbiscuit/stormwatch" target="_blank">GitHub</a>.
+    </div>
+  </div>
+
+<script>
+const PREFS_KEY = 'stormwatch_prefs';
+const DEFAULTS = {
+  map_style: 'dark',
+  radar_opacity: 0.7,
+  layer_radar: true,
+  layer_alerts: true,
+  layer_outlook: false,
+  layer_mcd: false,
+  layer_reports: false,
+  notify_severities: ['Extreme', 'Severe'],
+};
+
+function loadPrefs() {
+  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }; }
+  catch { return { ...DEFAULTS }; }
+}
+function savePrefs(p) {
+  localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+}
+
+function init() {
+  const p = loadPrefs();
+  document.getElementById('mapStyle').value = p.map_style;
+  document.getElementById('radarOpacity').value = p.radar_opacity;
+  document.getElementById('layerRadar').checked = p.layer_radar;
+  document.getElementById('layerAlerts').checked = p.layer_alerts;
+  document.getElementById('layerOutlook').checked = p.layer_outlook;
+  document.getElementById('layerMCD').checked = p.layer_mcd;
+  document.getElementById('layerReports').checked = p.layer_reports;
+  document.querySelectorAll('.severity-pill').forEach(pill => {
+    pill.classList.toggle('on', p.notify_severities.includes(pill.dataset.sev));
+  });
+}
+
+let savedTimer = null;
+function flashSaved() {
+  const pill = document.getElementById('savedPill');
+  pill.classList.add('show');
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => pill.classList.remove('show'), 1500);
+}
+
+function commit() {
+  const sev = Array.from(document.querySelectorAll('.severity-pill.on')).map(p => p.dataset.sev);
+  savePrefs({
+    map_style: document.getElementById('mapStyle').value,
+    radar_opacity: parseFloat(document.getElementById('radarOpacity').value),
+    layer_radar: document.getElementById('layerRadar').checked,
+    layer_alerts: document.getElementById('layerAlerts').checked,
+    layer_outlook: document.getElementById('layerOutlook').checked,
+    layer_mcd: document.getElementById('layerMCD').checked,
+    layer_reports: document.getElementById('layerReports').checked,
+    notify_severities: sev,
+  });
+  flashSaved();
+}
+
+['mapStyle', 'radarOpacity', 'layerRadar', 'layerAlerts', 'layerOutlook', 'layerMCD', 'layerReports'].forEach(id => {
+  document.getElementById(id).addEventListener('change', commit);
+});
+document.getElementById('severityPills').addEventListener('click', (e) => {
+  const pill = e.target.closest('.severity-pill');
+  if (!pill) return;
+  pill.classList.toggle('on');
+  commit();
+});
+
+init();
+</script>
+</body>
+</html>
