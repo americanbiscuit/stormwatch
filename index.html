@@ -1676,10 +1676,10 @@ function renderMetarOverlay(fc) {
 // native resolution to actually show through. Capped at 32x32 = 1024 points
 // (~Open-Meteo single-call ceiling).
 function windGridForZoom(z) {
-  if (z >= 8) return 32;   // city/county view → ~3-10 km grid (HRRR native)
-  if (z >= 6) return 28;   // multi-state view → ~15 km
-  if (z >= 5) return 24;   // regional view → ~30 km
-  return 20;               // CONUS view → ~70 km
+  if (z >= 8) return 28;   // city/county view → near HRRR native res
+  if (z >= 6) return 24;   // multi-state view
+  if (z >= 5) return 20;   // regional view
+  return 18;               // CONUS view
 }
 const WIND_PARTICLE_COUNT = 800;
 const WIND_MAX_AGE = 80;       // frames before respawn

@@ -8,7 +8,7 @@
 // That's the same model lineup Apple Weather's WeatherKit uses under the hood.
 import { jsonResponse, errorResponse } from '../_lib/nws.js';
 
-const MAX_GRID = 32;
+const MAX_GRID = 28;  // 28*28 = 784 points = 3 batches at 300 per call; stays under Open-Meteo's rate limit
 const OPEN_METEO = 'https://api.open-meteo.com/v1/forecast';
 
 export async function onRequestGet(context) {
@@ -38,9 +38,11 @@ export async function onRequestGet(context) {
     }
   }
 
-  // Open-Meteo rejects URLs longer than ~8KB. Chunk into batches small enough
-  // that the query string stays comfortably under that limit (~250 points each).
-  const BATCH = 250;
+  // Open-Meteo rejects URLs over ~8KB AND rate-limits ~10 req/min on the free
+  // tier. Larger batches = fewer requests = fewer rate-limit hits. 350 points
+  // per call keeps the URL well under 8KB while needing only 2-3 calls for
+  // even our densest grids.
+  const BATCH = 350;
   const batches = [];
   for (let i = 0; i < lats.length; i += BATCH) {
     batches.push({ lats: lats.slice(i, i + BATCH), lons: lons.slice(i, i + BATCH) });
