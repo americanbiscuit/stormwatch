@@ -305,6 +305,45 @@
   .frame-type.past { background: var(--accent-soft); color: var(--accent); }
   .frame-type.future { background: rgba(74, 222, 128, 0.15); color: var(--green); }
 
+  /* Jump-to-now button on radar timeline */
+  .now-btn {
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .now-btn:hover { transform: translateY(-1px); }
+  .now-btn.is-now {
+    background: transparent;
+    color: var(--green);
+    border: 1px solid var(--green);
+    cursor: default;
+    pointer-events: none;
+  }
+  .now-btn.is-now::before { content: '● '; }
+  /* Tick marks on the slider showing hourly boundaries */
+  .time-slider-wrap { flex: 2; position: relative; min-width: 0; }
+  .time-slider-ticks {
+    position: absolute;
+    top: 14px;
+    left: 9px; right: 9px;  /* line up with the thumb travel */
+    height: 6px;
+    pointer-events: none;
+    display: flex;
+    justify-content: space-between;
+  }
+  .time-slider-ticks .tick { width: 1px; height: 4px; background: var(--muted); opacity: 0.5; }
+  .time-slider-ticks .tick.major { height: 6px; background: var(--text-2); opacity: 0.7; }
+  .time-slider-ticks .now-marker { position: absolute; right: 0; top: -2px; width: 2px; height: 10px; background: var(--green); border-radius: 1px; }
+
   /* ============ LEGEND ============ */
   .legend-toggle {
     position: absolute;
@@ -659,6 +698,7 @@
     <button class="layer-btn" data-layer="satellite" onclick="toggleLayer('satellite')"><span class="dot"></span><span class="name">Satellite (clouds)</span></button>
     <button class="layer-btn" data-layer="metar" onclick="toggleLayer('metar')"><span class="dot"></span><span class="name">Airport temps</span></button>
     <button class="layer-btn" data-layer="wind" onclick="toggleLayer('wind')"><span class="dot"></span><span class="name">Wind arrows</span></button>
+    <button class="layer-btn" data-layer="wind-flow" onclick="toggleLayer('wind-flow')"><span class="dot"></span><span class="name">Wind flow (animated)</span></button>
   </div>
   <div class="layer-section">
     <div class="layer-section-header">Severe threats</div>
@@ -691,7 +731,7 @@
     <div class="time-label">Radar</div>
     <div class="time-value" id="timeValue">Loading...</div>
   </div>
-  <span class="frame-type past" id="frameType">NOW</span>
+  <button class="now-btn" id="nowBtn" onclick="jumpToNow()" title="Jump to live radar">↪ NOW</button>
   <input type="range" class="time-slider" id="timeSlider" min="0" max="0" value="0" oninput="seekFrame(this.value)" />
 </div>
 
@@ -725,6 +765,16 @@
     <h4>Hurricanes</h4>
     <div class="legend-row"><div class="legend-swatch" style="background:rgba(168,85,247,0.3); border-color:#a855f7"></div><span class="name">Forecast cone</span></div>
     <div class="legend-row"><div class="legend-swatch circle" style="background:#a855f7"></div><span class="name">Current position</span></div>
+  </div>
+  <div class="legend-group">
+    <h4>Wind Flow (animated)</h4>
+    <div class="legend-row"><span style="color:rgba(120,140,170,1);font-weight:800;">∼</span><span class="name">Calm</span><span class="desc">&lt; 5mph</span></div>
+    <div class="legend-row"><span style="color:#38bdf8;font-weight:800;">∼</span><span class="name">Light</span><span class="desc">~10mph</span></div>
+    <div class="legend-row"><span style="color:#4ade80;font-weight:800;">∼</span><span class="name">Moderate</span><span class="desc">~20mph</span></div>
+    <div class="legend-row"><span style="color:#fbbf24;font-weight:800;">∼</span><span class="name">Strong</span><span class="desc">~30mph</span></div>
+    <div class="legend-row"><span style="color:#fb923c;font-weight:800;">∼</span><span class="name">Very strong</span><span class="desc">~40mph</span></div>
+    <div class="legend-row"><span style="color:#f43f5e;font-weight:800;">∼</span><span class="name">Gale</span><span class="desc">45mph+</span></div>
+    <div class="legend-row"><span style="color:var(--muted);font-size:10px;">Particles flow in the direction wind is blowing</span></div>
   </div>
   <div class="legend-group">
     <h4>Surface Obs &amp; Wind</h4>
@@ -823,6 +873,7 @@ const PREF_DEFAULTS = {
   layer_satellite: false,
   layer_metar: false,
   layer_wind: false,
+  layer_wind_flow: false,
   layer_alerts: true,
   layer_outlook: false,
   layer_prob_tornado: false,
@@ -936,6 +987,7 @@ function initMap() {
     if (STATE.prefs.layer_reports) await loadStormReports();
     if (STATE.prefs.layer_hurricanes) await loadHurricanes();
     if (STATE.prefs.layer_metar || STATE.prefs.layer_wind) await loadMetarForView();
+    if (STATE.prefs.layer_wind_flow) startWindFlow();
     setupClickHandler();
     if (panelLat != null && panelLon != null) {
       setTimeout(() => fetchForecast(panelLat, panelLon, panelLabel), 400);
@@ -951,6 +1003,10 @@ function initMap() {
       if (dist > 2) loadAlertsForMapView();
     }
     if (STATE.prefs.layer_metar || STATE.prefs.layer_wind) loadMetarForView();
+    if (STATE.prefs.layer_wind_flow) {
+      // After map pan/zoom: refetch wind field for the new viewport
+      fetchWindField().catch(e => console.warn('Wind refetch failed', e));
+    }
   });
 }
 
@@ -1030,12 +1086,23 @@ function renderRadarFrame() {
   else if (ago < 120) agoStr = `1 hr ${ago - 60} min ago`;
   else agoStr = `${Math.floor(ago / 60)} hr ago`;
   document.getElementById('timeValue').textContent = `${dateStr} ${timeStr} · ${agoStr}`;
-  const ft = document.getElementById('frameType');
-  ft.textContent = ago < 6 ? 'NOW' : 'PAST';
-  ft.className = `frame-type ${ago < 6 ? 'past' : 'past'}`;
   document.getElementById('timeSlider').value = STATE.currentFrameIdx;
+  updateNowButton();
 }
-function seekFrame(idx) { STATE.currentFrameIdx = parseInt(idx); renderRadarFrame(); }
+function seekFrame(idx) { STATE.currentFrameIdx = parseInt(idx); renderRadarFrame(); updateNowButton(); }
+function jumpToNow() {
+  STATE.currentFrameIdx = STATE.radarFrames.length - 1;
+  renderRadarFrame();
+  // Also kill playback when jumping to now — user expects to be "live" now
+  if (STATE.playing) togglePlayback();
+}
+function updateNowButton() {
+  const btn = document.getElementById('nowBtn');
+  if (!btn) return;
+  const atLatest = STATE.currentFrameIdx === STATE.radarFrames.length - 1;
+  btn.classList.toggle('is-now', atLatest);
+  btn.textContent = atLatest ? 'LIVE' : '↪ NOW';
+}
 function togglePlayback() {
   STATE.playing = !STATE.playing;
   document.getElementById('playBtn').textContent = STATE.playing ? '❚❚' : '▶';
@@ -1588,6 +1655,173 @@ function renderMetarOverlay(fc) {
 }
 
 // ===========================================================================
+// WIND FLOW STREAMLINES (Apple-style animated particles)
+// Fetches a gridded wind field for the current viewport from Open-Meteo
+// (free, no key), then runs a Canvas2D particle simulation overlaid on the map.
+// Particles are advected by bilinearly-interpolated U/V wind components and
+// drawn with fading trails; old/out-of-bounds particles respawn randomly.
+// ===========================================================================
+const WIND_GRID = 12;          // 12x12 = 144 sample points across viewport
+const WIND_PARTICLE_COUNT = 1600;
+const WIND_MAX_AGE = 60;       // frames before respawn
+const WIND_SPEED_SCALE = 0.6;  // pixels per frame per mph
+
+function setupWindCanvas() {
+  let canvas = document.getElementById('windCanvas');
+  if (canvas) return canvas;
+  canvas = document.createElement('canvas');
+  canvas.id = 'windCanvas';
+  canvas.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:1;';
+  document.getElementById('map').appendChild(canvas);
+  resizeWindCanvas();
+  return canvas;
+}
+function resizeWindCanvas() {
+  const c = document.getElementById('windCanvas');
+  if (!c) return;
+  const rect = document.getElementById('map').getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  c.width = rect.width * dpr;
+  c.height = rect.height * dpr;
+  c.style.width = rect.width + 'px';
+  c.style.height = rect.height + 'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+}
+
+async function fetchWindField() {
+  const b = STATE.map.getBounds();
+  const south = b.getSouth(), north = b.getNorth();
+  const west = b.getWest(), east = b.getEast();
+  const latStep = (north - south) / (WIND_GRID - 1);
+  const lonStep = (east - west) / (WIND_GRID - 1);
+  const lats = [], lons = [];
+  for (let i = 0; i < WIND_GRID; i++) {
+    for (let j = 0; j < WIND_GRID; j++) {
+      lats.push((south + i * latStep).toFixed(3));
+      lons.push((west + j * lonStep).toFixed(3));
+    }
+  }
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=mph`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
+  const data = await res.json();
+  // Response: array of {current: {wind_speed_10m, wind_direction_10m}, ...} OR a single object if one point
+  const arr = Array.isArray(data) ? data : [data];
+  // Build a 2D grid: STATE.windGrid[i][j] = {u, v, speed}
+  const grid = [];
+  for (let i = 0; i < WIND_GRID; i++) {
+    grid.push([]);
+    for (let j = 0; j < WIND_GRID; j++) {
+      const idx = i * WIND_GRID + j;
+      const d = arr[idx]?.current;
+      if (!d || d.wind_speed_10m == null) { grid[i].push(null); continue; }
+      const dirRad = (d.wind_direction_10m || 0) * Math.PI / 180;
+      const speed = d.wind_speed_10m;
+      // NWS/met convention: direction is where the wind comes FROM.
+      // To get the wind vector (going TO), flip 180° → u = -speed*sin(dir), v = -speed*cos(dir).
+      // Then in screen space, V is northward but Y increases downward, so screen-y = -V.
+      const u = -speed * Math.sin(dirRad);  // eastward component
+      const v = -speed * Math.cos(dirRad);  // northward component
+      grid[i].push({ u, v, speed });
+    }
+  }
+  STATE.windGrid = grid;
+  STATE.windBounds = { south, north, west, east };
+}
+
+function sampleWind(lat, lon) {
+  if (!STATE.windGrid || !STATE.windBounds) return null;
+  const { south, north, west, east } = STATE.windBounds;
+  if (lat < south || lat > north || lon < west || lon > east) return null;
+  const fy = ((lat - south) / (north - south)) * (WIND_GRID - 1);
+  const fx = ((lon - west) / (east - west)) * (WIND_GRID - 1);
+  const i0 = Math.floor(fy), j0 = Math.floor(fx);
+  const i1 = Math.min(i0 + 1, WIND_GRID - 1), j1 = Math.min(j0 + 1, WIND_GRID - 1);
+  const ty = fy - i0, tx = fx - j0;
+  const g = STATE.windGrid;
+  const a = g[i0]?.[j0], b = g[i0]?.[j1], c = g[i1]?.[j0], d = g[i1]?.[j1];
+  if (!a || !b || !c || !d) return a || b || c || d || null;  // fall back to any
+  const u = a.u * (1 - tx) * (1 - ty) + b.u * tx * (1 - ty) + c.u * (1 - tx) * ty + d.u * tx * ty;
+  const v = a.v * (1 - tx) * (1 - ty) + b.v * tx * (1 - ty) + c.v * (1 - tx) * ty + d.v * tx * ty;
+  const speed = Math.sqrt(u * u + v * v);
+  return { u, v, speed };
+}
+
+function spawnParticle() {
+  const c = document.getElementById('windCanvas');
+  const w = parseFloat(c.style.width), h = parseFloat(c.style.height);
+  return { x: Math.random() * w, y: Math.random() * h, age: Math.random() * WIND_MAX_AGE };
+}
+
+function windColor(speed) {
+  if (speed < 5) return 'rgba(120, 140, 170, 0.7)';
+  if (speed < 12) return 'rgba(56, 189, 248, 0.85)';
+  if (speed < 22) return 'rgba(74, 222, 128, 0.9)';
+  if (speed < 32) return 'rgba(251, 191, 36, 0.95)';
+  if (speed < 45) return 'rgba(251, 146, 60, 1)';
+  return 'rgba(244, 63, 94, 1)';
+}
+
+function animateWindFlow() {
+  if (!STATE.prefs.layer_wind_flow) return;
+  const c = document.getElementById('windCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  const w = parseFloat(c.style.width), h = parseFloat(c.style.height);
+  // Subtle fade for trail effect
+  ctx.fillStyle = 'rgba(13, 17, 23, 0.08)';
+  ctx.fillRect(0, 0, w, h);
+
+  for (const p of STATE.windParticles) {
+    const ll = STATE.map.unproject([p.x, p.y]);
+    const wind = sampleWind(ll.lat, ll.lng);
+    if (!wind || p.age > WIND_MAX_AGE || p.x < 0 || p.x > w || p.y < 0 || p.y > h) {
+      Object.assign(p, spawnParticle(), { age: 0 });
+      continue;
+    }
+    const newX = p.x + wind.u * WIND_SPEED_SCALE;
+    const newY = p.y - wind.v * WIND_SPEED_SCALE;  // screen Y inverted vs geographic
+    ctx.strokeStyle = windColor(wind.speed);
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(newX, newY);
+    ctx.stroke();
+    p.x = newX; p.y = newY; p.age++;
+  }
+  STATE.windAnimFrame = requestAnimationFrame(animateWindFlow);
+}
+
+async function startWindFlow() {
+  setupWindCanvas();
+  try {
+    await fetchWindField();
+  } catch (e) {
+    console.warn('Wind field fetch failed', e);
+    return;
+  }
+  if (!STATE.windParticles?.length) {
+    STATE.windParticles = Array.from({ length: WIND_PARTICLE_COUNT }, spawnParticle);
+  }
+  const c = document.getElementById('windCanvas');
+  if (c) c.style.display = 'block';
+  cancelAnimationFrame(STATE.windAnimFrame);
+  STATE.windAnimFrame = requestAnimationFrame(animateWindFlow);
+}
+function stopWindFlow() {
+  cancelAnimationFrame(STATE.windAnimFrame);
+  const c = document.getElementById('windCanvas');
+  if (c) {
+    c.style.display = 'none';
+    c.getContext('2d').clearRect(0, 0, c.width, c.height);
+  }
+}
+
+// Refetch wind field when map moves significantly + on resize/style change
+window.addEventListener('resize', () => { if (STATE.prefs.layer_wind_flow) resizeWindCanvas(); });
+
+// ===========================================================================
 // CLICK-TO-FORECAST
 // ===========================================================================
 function setupClickHandler() {
@@ -1734,8 +1968,13 @@ async function toggleLayer(name) {
   }
   else if (name === 'wind') {
     STATE.prefs.layer_wind = newOn;
-    if (newOn) await loadMetarForView();   // wind arrows reuse the METAR source
+    if (newOn) await loadMetarForView();
     setVis('wind-arrow', newOn);
+  }
+  else if (name === 'wind-flow') {
+    STATE.prefs.layer_wind_flow = newOn;
+    if (newOn) await startWindFlow();
+    else stopWindFlow();
   }
   else if (name === 'alerts') {
     STATE.prefs.layer_alerts = newOn;
