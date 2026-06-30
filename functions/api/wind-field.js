@@ -38,22 +38,34 @@ export async function onRequestGet(context) {
     }
   }
 
-  const params = new URLSearchParams({
-    latitude: lats.join(','),
-    longitude: lons.join(','),
-    current: 'wind_speed_10m,wind_direction_10m',
-    wind_speed_unit: 'mph',
-    models: 'best_match',
-    timeformat: 'unixtime',
-  });
+  // Open-Meteo rejects URLs longer than ~8KB. Chunk into batches small enough
+  // that the query string stays comfortably under that limit (~250 points each).
+  const BATCH = 250;
+  const batches = [];
+  for (let i = 0; i < lats.length; i += BATCH) {
+    batches.push({ lats: lats.slice(i, i + BATCH), lons: lons.slice(i, i + BATCH) });
+  }
+
+  async function fetchBatch(b) {
+    const params = new URLSearchParams({
+      latitude: b.lats.join(','),
+      longitude: b.lons.join(','),
+      current: 'wind_speed_10m,wind_direction_10m',
+      wind_speed_unit: 'mph',
+      models: 'best_match',
+      timeformat: 'unixtime',
+    });
+    const r = await fetch(`${OPEN_METEO}?${params.toString()}`, {
+      cf: { cacheTtl: 300, cacheEverything: true },
+    });
+    if (!r.ok) throw new Error(`Open-Meteo ${r.status}`);
+    const d = await r.json();
+    return Array.isArray(d) ? d : [d];
+  }
 
   try {
-    const res = await fetch(`${OPEN_METEO}?${params.toString()}`, {
-      cf: { cacheTtl: 300, cacheEverything: true },  // 5-min edge cache; wind forecast updates hourly anyway
-    });
-    if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
-    const data = await res.json();
-    const arr = Array.isArray(data) ? data : [data];
+    const results = await Promise.all(batches.map(fetchBatch));
+    const arr = results.flat();
 
     // Convert to flat {lat, lon, u, v, speed} array in row-major order (i*grid + j)
     const points = [];
