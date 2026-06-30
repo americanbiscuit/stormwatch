@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0d1117" />
+<title>Forecast · Stormwatch</title>
+<link rel="stylesheet" href="/_shared.css" />
+<style>
+  .picker-bar {
+    display: flex;
+    gap: 8px;
+    margin: 12px 0 20px;
+    flex-wrap: wrap;
+  }
+  .picker-bar .chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    padding: 7px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .picker-bar .chip.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .picker-bar .chip:hover:not(.active) { color: var(--text); }
+
+  .hero {
+    background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .hero-loc { font-size: 12px; color: var(--text-2); text-transform: uppercase; letter-spacing: 1.5px; font-weight: 800; }
+  .hero-name { font-size: 28px; font-weight: 800; letter-spacing: -0.6px; margin-top: 4px; }
+  .hero-temp-row { display: flex; align-items: flex-end; gap: 16px; margin-top: 18px; }
+  .hero-temp { font-size: 84px; font-weight: 200; letter-spacing: -3px; line-height: 1; }
+  .hero-cond {
+    color: var(--text-2);
+    font-size: 16px;
+    font-weight: 600;
+    padding-bottom: 14px;
+  }
+  .hero-cond .hi-lo { display: block; color: var(--muted); font-size: 13px; font-weight: 600; margin-top: 2px; }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .stat-tile {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .stat-tile .label { font-size: 10px; color: var(--text-2); text-transform: uppercase; letter-spacing: 1px; font-weight: 800; }
+  .stat-tile .value { font-size: 18px; font-weight: 800; margin-top: 4px; }
+  .stat-tile .sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+  .alert-prominent {
+    background: rgba(244, 63, 94, 0.12);
+    border: 1px solid var(--extreme);
+    border-left-width: 4px;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    cursor: pointer;
+  }
+  .alert-prominent.warn { background: rgba(251, 146, 60, 0.12); border-color: var(--severe); }
+  .alert-prominent.watch { background: rgba(251, 191, 36, 0.12); border-color: var(--warn); }
+  .alert-prominent.advisory { background: rgba(56, 189, 248, 0.12); border-color: var(--accent); }
+  .alert-prominent .ev { font-weight: 800; font-size: 14px; }
+  .alert-prominent .when { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+
+  .hourly-strip {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 4px 2px 14px;
+    scroll-snap-type: x mandatory;
+  }
+  .hourly-strip .cell {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 8px;
+    min-width: 70px;
+    text-align: center;
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+  .hourly-strip .cell .h { font-size: 11px; color: var(--text-2); font-weight: 700; }
+  .hourly-strip .cell .t { font-size: 18px; font-weight: 800; margin: 4px 0; }
+  .hourly-strip .cell .icon { font-size: 16px; color: var(--text-2); }
+  .hourly-strip .cell .p { font-size: 10px; color: var(--accent); font-weight: 700; margin-top: 2px; }
+
+  .daily-list { display: flex; flex-direction: column; gap: 0; }
+  .daily-row {
+    display: grid;
+    grid-template-columns: 90px 24px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .daily-row:last-child { border-bottom: none; }
+  .daily-row .d { font-weight: 700; font-size: 14px; }
+  .daily-row .icon { color: var(--text-2); font-size: 18px; text-align: center; }
+  .daily-row .desc { color: var(--text-2); font-size: 13px; }
+  .daily-row .temps { font-weight: 800; font-size: 14px; text-align: right; white-space: nowrap; }
+  .daily-row .temps .lo { color: var(--text-2); font-weight: 600; }
+
+  .afd-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .afd-card .meta { font-size: 12px; color: var(--text-2); margin-bottom: 12px; }
+  .afd-card .meta b { color: var(--text); }
+  .afd-card details summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: 700;
+    padding: 6px 0;
+    list-style: none;
+  }
+  .afd-card details summary::-webkit-details-marker { display: none; }
+  .afd-card details summary::before { content: "▸ "; }
+  .afd-card details[open] summary::before { content: "▾ "; }
+  .afd-card details[open] summary { margin-bottom: 8px; }
+  .afd-card .body {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-2);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin-top: 8px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  .empty-state {
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--text-2);
+    font-size: 14px;
+  }
+  .empty-state .big { font-size: 40px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+  <header class="app-header">
+    <a href="/" class="logo"><span class="bolt">⚡</span> Stormwatch</a>
+    <nav>
+      <a href="/">Radar</a>
+      <a href="/forecast.html" class="active">Forecast</a>
+      <a href="/saved.html">Saved</a>
+      <a href="/alerts.html">Alerts</a>
+      <a href="/settings.html">Settings</a>
+    </nav>
+  </header>
+
+  <div class="container">
+    <div class="picker-bar" id="pickerBar"></div>
+    <div id="content"><div class="loading">Loading...</div></div>
+  </div>
+
+<script>
+const LOCATIONS_KEY = 'stormwatch_locations';
+
+const params = new URLSearchParams(window.location.search);
+const urlLat = parseFloat(params.get('lat'));
+const urlLon = parseFloat(params.get('lon'));
+const urlLabel = params.get('label');
+
+function loadSavedLocations() {
+  try { return JSON.parse(localStorage.getItem(LOCATIONS_KEY) || '[]'); } catch { return []; }
+}
+
+function renderPicker(active) {
+  const locs = loadSavedLocations();
+  const bar = document.getElementById('pickerBar');
+  let html = '';
+  for (const l of locs) {
+    const isActive = active && Math.abs(active.lat - l.lat) < 0.01 && Math.abs(active.lon - l.lon) < 0.01;
+    html += `<a class="chip ${isActive ? 'active' : ''}" href="/forecast.html?lat=${l.lat}&lon=${l.lon}&label=${encodeURIComponent(l.label)}">${escapeHtml(l.label)}${l.is_primary ? ' ★' : ''}</a>`;
+  }
+  if (active && !locs.find(l => Math.abs(active.lat - l.lat) < 0.01 && Math.abs(active.lon - l.lon) < 0.01)) {
+    html += `<span class="chip active">${escapeHtml(active.label || (active.lat.toFixed(3) + ', ' + active.lon.toFixed(3)))}</span>`;
+  }
+  html += `<a class="chip" href="/saved.html" style="margin-left:auto;">+ Add</a>`;
+  bar.innerHTML = html;
+}
+
+async function init() {
+  // Decide what to show: URL coords > primary saved > first saved > empty
+  let active = null;
+  if (!isNaN(urlLat) && !isNaN(urlLon)) {
+    active = { lat: urlLat, lon: urlLon, label: urlLabel };
+  } else {
+    const locs = loadSavedLocations();
+    const primary = locs.find(l => l.is_primary) || locs[0];
+    if (primary) {
+      active = { lat: primary.lat, lon: primary.lon, label: primary.label };
+    }
+  }
+  renderPicker(active);
+  if (!active) {
+    document.getElementById('content').innerHTML = `
+      <div class="empty-state">
+        <div class="big">🌤️</div>
+        <div>No location chosen.</div>
+        <div style="margin-top:12px;">
+          <a href="/saved.html" class="btn" style="text-decoration:none;display:inline-block;">+ Add a location</a>
+        </div>
+        <div style="margin-top:12px;font-size:12px;">Or click anywhere on the <a href="/">Radar map</a> to get a forecast for that point.</div>
+      </div>`;
+    return;
+  }
+  await loadDashboard(active);
+}
+
+async function loadDashboard(loc) {
+  document.getElementById('content').innerHTML = '<div class="loading">Loading dashboard...</div>';
+  try {
+    const [forecastRes, alertsRes] = await Promise.all([
+      fetch(`/api/forecast?lat=${loc.lat}&lon=${loc.lon}`),
+      fetch(`/api/alerts?lat=${loc.lat}&lon=${loc.lon}`),
+    ]);
+    const forecast = await forecastRes.json();
+    const alerts = await alertsRes.json();
+    renderDashboard(loc, forecast, alerts.alerts || []);
+    // AFD loaded after main render to avoid blocking
+    loadAFD(loc);
+  } catch (e) {
+    document.getElementById('content').innerHTML = `<div class="empty">Failed to load: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderDashboard(loc, forecast, alerts) {
+  const { location, current, hourly, daily } = forecast;
+  const city = location?.city ? `${location.city}, ${location.state}` : `${loc.lat.toFixed(3)}, ${loc.lon.toFixed(3)}`;
+  const tempNow = current?.temp != null ? Math.round(current.temp) : (daily?.[0]?.temperature ?? '—');
+  const cond = current?.conditions || daily?.[0]?.shortForecast || '';
+  const today = daily?.[0];
+  const tonight = daily?.[1];
+  const hi = today?.isDaytime ? today.temperature : tonight?.temperature;
+  const lo = today?.isDaytime ? tonight?.temperature : today?.temperature;
+
+  let html = '';
+
+  // ALERTS (prominent if any)
+  if (alerts.length) {
+    html += alerts.slice(0, 3).map(a => {
+      const cls = a.severity === 'Extreme' ? '' : a.severity === 'Severe' ? 'warn' : a.severity === 'Moderate' ? 'watch' : 'advisory';
+      const expires = a.expires ? new Date(a.expires).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+      return `<div class="alert-prominent ${cls}" onclick="alert(${JSON.stringify(a.event + '\n\n' + (a.headline || '') + '\n\n' + (a.description || '')).replace(/'/g,'&apos;')})">
+        <div class="ev">⚠ ${escapeHtml(a.event)}</div>
+        <div class="when">${escapeHtml(a.areaDesc || '')} ${expires ? '· Expires ' + expires : ''}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // HERO
+  html += `<div class="hero">
+    <div class="hero-loc">${escapeHtml(loc.label || 'Location')}</div>
+    <div class="hero-name">${escapeHtml(city)}</div>
+    <div class="hero-temp-row">
+      <div class="hero-temp">${tempNow}°</div>
+      <div class="hero-cond">${escapeHtml(cond)}
+        ${hi != null || lo != null ? `<span class="hi-lo">H: ${hi != null ? hi + '°' : '—'} · L: ${lo != null ? lo + '°' : '—'}</span>` : ''}
+      </div>
+    </div>
+    ${current ? `<div class="stat-grid">
+      <div class="stat-tile">
+        <div class="label">Humidity</div>
+        <div class="value">${current.humidity != null ? Math.round(current.humidity) + '%' : '—'}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="label">Wind</div>
+        <div class="value">${current.windSpeed != null ? Math.round(current.windSpeed) + ' mph' : '—'}</div>
+        ${current.windGust ? `<div class="sub">Gust ${Math.round(current.windGust)} mph</div>` : ''}
+      </div>
+      <div class="stat-tile">
+        <div class="label">Dewpoint</div>
+        <div class="value">${current.dewpoint != null ? Math.round(current.dewpoint) + '°' : '—'}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="label">Pressure</div>
+        <div class="value">${current.pressureMb != null ? Math.round(current.pressureMb) + ' mb' : '—'}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="label">Visibility</div>
+        <div class="value">${current.visibility != null ? current.visibility + ' mi' : '—'}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="label">Station</div>
+        <div class="value" style="font-size:14px;">${escapeHtml(current.station || '—')}</div>
+        ${current.observedAt ? `<div class="sub">${new Date(current.observedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</div>` : ''}
+      </div>
+    </div>` : ''}
+  </div>`;
+
+  // HOURLY
+  if (hourly && hourly.length) {
+    html += `<h2>Next 24 Hours</h2><div class="hourly-strip">`;
+    html += hourly.slice(0, 24).map(p => `
+      <div class="cell">
+        <div class="h">${new Date(p.startTime).toLocaleTimeString('en-US', { hour: 'numeric' })}</div>
+        <div class="t">${p.temperature}°</div>
+        <div class="p">${p.probabilityOfPrecipitation?.value || 0}% rain</div>
+      </div>`).join('');
+    html += `</div>`;
+  }
+
+  // DAILY
+  if (daily && daily.length) {
+    const pairs = [];
+    for (let i = 0; i < daily.length; i++) {
+      const p = daily[i];
+      if (p.isDaytime) {
+        const next = daily[i + 1];
+        pairs.push({ day: p.name, short: p.shortForecast, hi: p.temperature, lo: (next && !next.isDaytime) ? next.temperature : null, pop: p.probabilityOfPrecipitation?.value });
+      } else if (i === 0) {
+        pairs.push({ day: p.name, short: p.shortForecast, hi: null, lo: p.temperature, pop: p.probabilityOfPrecipitation?.value });
+      }
+    }
+    html += `<h2>7-Day Forecast</h2><div class="card"><div class="daily-list">`;
+    html += pairs.map(p => `
+      <div class="daily-row">
+        <div class="d">${escapeHtml(p.day)}</div>
+        <div class="icon">${p.pop && p.pop >= 30 ? '☔' : (p.short && /sun/i.test(p.short)) ? '☀' : (p.short && /cloud/i.test(p.short)) ? '☁' : '·'}</div>
+        <div class="desc">${escapeHtml(p.short)}${p.pop ? ` <span style="color:var(--accent);font-weight:700;">${p.pop}%</span>` : ''}</div>
+        <div class="temps">${p.hi != null ? p.hi + '°' : '—'} <span class="lo">${p.lo != null ? p.lo + '°' : ''}</span></div>
+      </div>`).join('');
+    html += `</div></div>`;
+  }
+
+  // AFD placeholder (filled later by loadAFD)
+  html += `<h2>Forecast Discussion</h2><div id="afdBox" class="afd-card"><div class="loading" style="padding:20px;">Loading discussion...</div></div>`;
+
+  document.getElementById('content').innerHTML = html;
+}
+
+async function loadAFD(loc) {
+  try {
+    const res = await fetch(`/api/discussion?lat=${loc.lat}&lon=${loc.lon}`);
+    const data = await res.json();
+    if (!res.ok || !data.productText) throw new Error(data.error || 'No AFD');
+    const issued = data.issued ? new Date(data.issued).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) : '—';
+    document.getElementById('afdBox').innerHTML = `
+      <div class="meta">
+        <b>${escapeHtml(data.office || '')}</b> — issued ${escapeHtml(issued)}
+        ${data.office ? `· <a href="https://www.spc.noaa.gov/exper/sounding/sounding.php?LATEST=&STA=${escapeHtml(data.office)}" target="_blank">View Skew-T Sounding ›</a>` : ''}
+      </div>
+      <details>
+        <summary>Show full discussion</summary>
+        <div class="body">${escapeHtml(data.productText)}</div>
+      </details>
+    `;
+  } catch (e) {
+    document.getElementById('afdBox').innerHTML = `<div style="color:var(--text-2);font-size:13px;">Discussion unavailable: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+init();
+setInterval(() => {
+  if (!isNaN(urlLat) && !isNaN(urlLon)) loadDashboard({ lat: urlLat, lon: urlLon, label: urlLabel });
+}, 5 * 60 * 1000);
+</script>
+</body>
+</html>

@@ -40,6 +40,7 @@
     <a href="/" class="logo"><span class="bolt">⚡</span> Stormwatch</a>
     <nav>
       <a href="/">Radar</a>
+      <a href="/forecast.html">Forecast</a>
       <a href="/saved.html" class="active">Saved</a>
       <a href="/alerts.html">Alerts</a>
       <a href="/settings.html">Settings</a>
@@ -126,7 +127,8 @@ function render() {
         <div class="alerts" id="alerts-${l.id}" style="display:none;"></div>
       </div>
       <div class="actions">
-        <button class="btn small" onclick="openOnMap(${l.lat}, ${l.lon})">Map</button>
+        <button class="btn small" onclick="openForecast(${l.lat}, ${l.lon}, ${JSON.stringify(l.label).replace(/'/g,"\\'")})">Details</button>
+        <button class="btn small secondary" onclick="openOnMap(${l.lat}, ${l.lon})">Map</button>
         <button class="btn small secondary" onclick="editLoc('${l.id}')">Edit</button>
         <button class="btn small danger" onclick="deleteLoc('${l.id}')">×</button>
       </div>
@@ -163,6 +165,9 @@ async function hydrate(l) {
 
 function openOnMap(lat, lon) {
   window.location.href = `/?lat=${lat}&lon=${lon}&zoom=9`;
+}
+function openForecast(lat, lon, label) {
+  window.location.href = `/forecast.html?lat=${lat}&lon=${lon}&label=${encodeURIComponent(label)}`;
 }
 
 function openAddModal() {
