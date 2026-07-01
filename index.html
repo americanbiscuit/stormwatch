@@ -718,7 +718,7 @@
     <button class="layer-btn on" data-layer="radar" onclick="toggleLayer('radar')"><span class="dot"></span><span class="name">Radar (rain &amp; storms)</span></button>
     <button class="layer-btn" data-layer="satellite" onclick="toggleLayer('satellite')"><span class="dot"></span><span class="name">Satellite (clouds)</span></button>
     <button class="layer-btn" data-layer="metar" onclick="toggleLayer('metar')"><span class="dot"></span><span class="name">Airport temps</span></button>
-    <button class="layer-btn" data-layer="wind" onclick="toggleLayer('wind')"><span class="dot"></span><span class="name">Wind arrows</span></button>
+    <button class="layer-btn" data-layer="wind" onclick="toggleLayer('wind')" style="display:none;"><span class="dot"></span><span class="name">Wind arrows — beta</span></button>
     <button class="layer-btn" data-layer="wind-flow" onclick="toggleLayer('wind-flow')" style="display:none;"><span class="dot"></span><span class="name">Wind flow (animated) — beta</span></button>
   </div>
   <div class="layer-section">
@@ -888,7 +888,8 @@
 // via style="display:none" in the HTML; setting this true here also re-enables
 // initial auto-load if a stale localStorage pref was set true from an earlier build.
 const FEATURES = {
-  wind_flow_enabled: false,
+  wind_arrows_enabled: false,   // METAR-based direction+speed arrows at airports
+  wind_flow_enabled: false,     // animated particle streamlines (Open-Meteo)
 };
 
 const PREFS_KEY = 'stormwatch_prefs';
@@ -951,6 +952,7 @@ function loadPrefs() {
   catch { STATE.prefs = { ...PREF_DEFAULTS }; }
   // Force-off any flag-disabled features so a stale pref can't sneak them on
   if (!FEATURES.wind_flow_enabled) STATE.prefs.layer_wind_flow = false;
+  if (!FEATURES.wind_arrows_enabled) STATE.prefs.layer_wind = false;
 }
 function savePrefs() { localStorage.setItem(PREFS_KEY, JSON.stringify(STATE.prefs)); }
 function loadSavedLocations() { try { return JSON.parse(localStorage.getItem(LOCATIONS_KEY) || '[]'); } catch { return []; } }
@@ -1990,6 +1992,7 @@ async function toggleLayer(name) {
     setVis('metar-temp', newOn);
   }
   else if (name === 'wind') {
+    if (!FEATURES.wind_arrows_enabled) { btn.classList.remove('on'); return; }
     STATE.prefs.layer_wind = newOn;
     if (newOn) await loadMetarForView();
     setVis('wind-arrow', newOn);
