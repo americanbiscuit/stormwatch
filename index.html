@@ -487,10 +487,20 @@
   .maplibregl-ctrl-bottom-right { display: none !important; }
 
   /* MapLibre popup theming */
-  .maplibregl-popup-content { background: var(--surface) !important; color: var(--text) !important; border: 1px solid var(--border) !important; border-radius: 10px !important; padding: 12px 14px !important; font-family: inherit !important; font-size: 12px !important; line-height: 1.45 !important; }
+  .maplibregl-popup-content { background: var(--surface) !important; color: var(--text) !important; border: 1px solid var(--border) !important; border-radius: 10px !important; padding: 12px 14px !important; font-family: inherit !important; font-size: 12px !important; line-height: 1.45 !important; box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important; }
   .maplibregl-popup-content strong { color: var(--text); font-weight: 800; }
   .maplibregl-popup-tip { border-top-color: var(--surface) !important; border-bottom-color: var(--surface) !important; }
   .maplibregl-popup-close-button { color: var(--text-2) !important; font-size: 18px !important; padding: 2px 6px !important; }
+  /* Keep popup below top bar + above bottom nav on mobile — no overlap with chrome */
+  .maplibregl-popup { z-index: 15 !important; max-width: calc(100vw - 24px) !important; }
+  @media (max-width: 700px) {
+    .maplibregl-popup-content {
+      max-width: calc(100vw - 24px) !important;
+      max-height: 42vh !important;
+      overflow-y: auto !important;
+      font-size: 12px !important;
+    }
+  }
 
   /* Stack outlook chip + layers panel BELOW alert banner when banner is visible.
      Belt-and-suspenders: the sibling selector + an unconditional body-class rule. */
@@ -709,7 +719,7 @@
     <button class="layer-btn" data-layer="satellite" onclick="toggleLayer('satellite')"><span class="dot"></span><span class="name">Satellite (clouds)</span></button>
     <button class="layer-btn" data-layer="metar" onclick="toggleLayer('metar')"><span class="dot"></span><span class="name">Airport temps</span></button>
     <button class="layer-btn" data-layer="wind" onclick="toggleLayer('wind')"><span class="dot"></span><span class="name">Wind arrows</span></button>
-    <button class="layer-btn" data-layer="wind-flow" onclick="toggleLayer('wind-flow')"><span class="dot"></span><span class="name">Wind flow (animated)</span></button>
+    <button class="layer-btn" data-layer="wind-flow" onclick="toggleLayer('wind-flow')" style="display:none;"><span class="dot"></span><span class="name">Wind flow (animated) — beta</span></button>
   </div>
   <div class="layer-section">
     <div class="layer-section-header">Severe threats</div>
@@ -873,6 +883,14 @@
 // STORMWATCH v3 — multi-layer weather aggregator
 // ===========================================================================
 
+// ============ FEATURE FLAGS ============
+// Wind flow: disabled while we iterate on visual quality. Toggle button is hidden
+// via style="display:none" in the HTML; setting this true here also re-enables
+// initial auto-load if a stale localStorage pref was set true from an earlier build.
+const FEATURES = {
+  wind_flow_enabled: false,
+};
+
 const PREFS_KEY = 'stormwatch_prefs';
 const VIEW_KEY = 'stormwatch_view';
 const LOCATIONS_KEY = 'stormwatch_locations';
@@ -931,6 +949,8 @@ const SPC_LEVELS = {
 function loadPrefs() {
   try { STATE.prefs = { ...PREF_DEFAULTS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }; }
   catch { STATE.prefs = { ...PREF_DEFAULTS }; }
+  // Force-off any flag-disabled features so a stale pref can't sneak them on
+  if (!FEATURES.wind_flow_enabled) STATE.prefs.layer_wind_flow = false;
 }
 function savePrefs() { localStorage.setItem(PREFS_KEY, JSON.stringify(STATE.prefs)); }
 function loadSavedLocations() { try { return JSON.parse(localStorage.getItem(LOCATIONS_KEY) || '[]'); } catch { return []; } }
@@ -1300,10 +1320,7 @@ function renderOutlookOverlay() {
     STATE.map.on('click', 'outlook-fill', (e) => {
       const f = e.features?.[0]; if (!f) return;
       const p = f.properties || {};
-      new maplibregl.Popup({ closeButton: true })
-        .setLngLat(e.lngLat)
-        .setHTML(`<strong>${p.label2 || p.label}</strong><br/><span style="color:var(--text-2)">SPC Day ${STATE.prefs.outlook_day} Convective Outlook</span><br/><small style="color:var(--muted)">Valid through ${formatYYYYMMDDHHMM(p.expire)}</small>`)
-        .addTo(STATE.map);
+      openMapPopup(e.lngLat, `<strong>${p.label2 || p.label}</strong><br/><span style="color:var(--text-2)">SPC Day ${STATE.prefs.outlook_day} Convective Outlook</span><br/><small style="color:var(--muted)">Valid through ${formatYYYYMMDDHHMM(p.expire)}</small>`);
       e.originalEvent.preventDefault();
     });
   }
@@ -1410,10 +1427,7 @@ function renderProbOverlay(type, fc) {
   STATE.map.on('click', fillId, (e) => {
     const f = e.features?.[0]; if (!f) return;
     const p = f.properties || {};
-    new maplibregl.Popup({ closeButton: true })
-      .setLngLat(e.lngLat)
-      .setHTML(`<strong>${p.label || ''}% ${type}</strong><br/><span style="color:var(--text-2)">${p.label2 || `${type[0].toUpperCase() + type.slice(1)} probability within 25 mi`}</span><br/><small style="color:var(--muted)">Valid through ${formatYYYYMMDDHHMM(p.expire)}</small>`)
-      .addTo(STATE.map);
+    openMapPopup(e.lngLat, `<strong>${p.label || ''}% ${type}</strong><br/><span style="color:var(--text-2)">${p.label2 || `${type[0].toUpperCase() + type.slice(1)} probability within 25 mi`}</span><br/><small style="color:var(--muted)">Valid through ${formatYYYYMMDDHHMM(p.expire)}</small>`);
     e.originalEvent.preventDefault();
   });
 }
@@ -1444,10 +1458,7 @@ function renderMCDOverlay(fc) {
   STATE.map.on('click', 'mcd-fill', (e) => {
     const f = e.features?.[0]; if (!f) return;
     const p = f.properties || {};
-    new maplibregl.Popup({ closeButton: true })
-      .setLngLat(e.lngLat)
-      .setHTML(`<strong>${escapeHtml(p.name || 'MCD')}</strong><br/><span style="color:var(--text-2)">${escapeHtml(p.folderpath || '')}</span><br/>${p.popupinfo ? `<a href="${p.popupinfo}" target="_blank" style="color:var(--accent)">Read full discussion ›</a>` : ''}`)
-      .addTo(STATE.map);
+    openMapPopup(e.lngLat, `<strong>${escapeHtml(p.name || 'MCD')}</strong><br/><span style="color:var(--text-2)">${escapeHtml(p.folderpath || '')}</span><br/>${p.popupinfo ? `<a href="${p.popupinfo}" target="_blank" style="color:var(--accent)">Read full discussion ›</a>` : ''}`);
     e.originalEvent.preventDefault();
   });
 }
@@ -1490,7 +1501,7 @@ function renderReportsOverlay(fc) {
     const valid = p.valid ? new Date(p.valid).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
     const magStr = p.magnitude ? `${p.magnitude}${p.unit ? ' ' + p.unit : ''}` : '';
     const html = `<strong>${escapeHtml(p.typetext || p.type)}</strong>${magStr ? ` <span style="color:var(--text-2)">${escapeHtml(magStr)}</span>` : ''}<br/><span style="color:var(--text-2)">${escapeHtml(p.city || '')}${p.state ? ', ' + escapeHtml(p.state) : ''}</span><br/><small style="color:var(--muted)">${valid} · ${escapeHtml(p.source || '')}</small>${p.remark ? `<div style="margin-top:6px;color:var(--text-2);font-size:11px;">${escapeHtml(p.remark)}</div>` : ''}`;
-    new maplibregl.Popup({ closeButton: true }).setLngLat(e.lngLat).setHTML(html).addTo(STATE.map);
+    openMapPopup(e.lngLat, html);
     e.originalEvent.preventDefault();
   });
   STATE.map.on('mouseenter', 'lsr-circles', () => STATE.map.getCanvas().style.cursor = 'pointer');
@@ -1555,7 +1566,7 @@ function renderHurricaneOverlays(data) {
       const f = e.features?.[0]; if (!f) return;
       const p = f.properties || {};
       const html = `<strong>${escapeHtml(p.STORMNAME || p.STORMTYPE || 'Tropical Cyclone')}</strong><br/><span style="color:var(--text-2)">${escapeHtml(p.STORMTYPE || '')}</span><br/>${p.MAXWIND ? `Max wind: ${p.MAXWIND} kt<br/>` : ''}${p.MSLP ? `Pressure: ${p.MSLP} mb<br/>` : ''}<a href="https://www.nhc.noaa.gov" target="_blank" style="color:var(--accent)">NHC details ›</a>`;
-      new maplibregl.Popup({ closeButton: true }).setLngLat(e.lngLat).setHTML(html).addTo(STATE.map);
+      openMapPopup(e.lngLat, html);
       e.originalEvent.preventDefault();
     });
   } else {
@@ -1657,7 +1668,7 @@ function renderMetarOverlay(fc) {
       ${p.gust != null ? ` (gust ${Math.round(p.gust * 1.15078)})` : ''}<br/>
       ${p.vsby != null ? `Visibility: ${p.vsby} mi<br/>` : ''}
       <small style="color:var(--muted)">Obs ${p.utc_valid ? new Date(p.utc_valid).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}</small>`;
-    new maplibregl.Popup({ closeButton: true }).setLngLat(e.lngLat).setHTML(html).addTo(STATE.map);
+    openMapPopup(e.lngLat, html);
     e.originalEvent.preventDefault();
   });
   STATE.map.on('mouseenter', 'metar-dot', () => STATE.map.getCanvas().style.cursor = 'pointer');
@@ -1984,6 +1995,7 @@ async function toggleLayer(name) {
     setVis('wind-arrow', newOn);
   }
   else if (name === 'wind-flow') {
+    if (!FEATURES.wind_flow_enabled) { btn.classList.remove('on'); return; }
     STATE.prefs.layer_wind_flow = newOn;
     if (newOn) await startWindFlow();
     else stopWindFlow();
@@ -2183,6 +2195,26 @@ document.getElementById('locateBtn').addEventListener('click', () => {
     { enableHighAccuracy: true, timeout: 10000 }
   );
 });
+
+// Single popup at a time, sized to viewport, offset off critical mobile UI (bottom sheet is not open when popups fire, but time control + bottom nav are always at bottom on mobile).
+function openMapPopup(lngLat, html) {
+  if (STATE.currentPopup) { STATE.currentPopup.remove(); STATE.currentPopup = null; }
+  const isMobile = window.innerWidth <= 700;
+  const popup = new maplibregl.Popup({
+    closeButton: true,
+    closeOnClick: true,
+    closeOnMove: true,   // pan/zoom closes it — feels responsive
+    maxWidth: isMobile ? `${Math.min(window.innerWidth - 24, 360)}px` : '340px',
+    anchor: isMobile ? 'bottom' : undefined,  // desktop: MapLibre auto-picks; mobile: force bottom-anchored so it opens ABOVE the tap (never covering time control at screen bottom)
+    offset: isMobile ? 12 : 8,
+  })
+    .setLngLat(lngLat)
+    .setHTML(html)
+    .addTo(STATE.map);
+  STATE.currentPopup = popup;
+  popup.on('close', () => { if (STATE.currentPopup === popup) STATE.currentPopup = null; });
+  return popup;
+}
 
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
